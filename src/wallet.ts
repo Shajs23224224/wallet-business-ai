@@ -34,7 +34,13 @@ export async function ensureLoyaltyClass() {
       programName: "Loyalty Program",
       programLogo: {
         sourceUri: {
-          uri: "https://developers.google.com/static/wallet/images/generic-loyalty-card.png"
+          uri: "https://farm4.staticflickr.com/3723/11177041115_6e6a3b6f49_o.jpg"
+        },
+        contentDescription: {
+          defaultValue: {
+            language: "en-US",
+            value: "Wallet Business AI loyalty program logo"
+          }
         }
       },
       reviewStatus: "UNDER_REVIEW"
