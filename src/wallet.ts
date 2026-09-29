@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
 import { env } from "./config.js";
+import type { Business } from "./store.js";
 
 const auth = new google.auth.GoogleAuth({
   credentials: {
@@ -18,28 +19,30 @@ export type LoyaltyCustomer = {
   points?: number;
 };
 
-export async function ensureLoyaltyClass() {
-  const classId = env.GOOGLE_WALLET_CLASS_ID;
+function getObjectId(business: Business, customerId: string) {
+  return `${business.issuerId}.${business.id}_${customerId}`;
+}
 
+export async function ensureLoyaltyClass(business: Business) {
   try {
-    return await walletobjects.loyaltyclass.get({ resourceId: classId });
+    return await walletobjects.loyaltyclass.get({ resourceId: business.classId });
   } catch (error: any) {
     if (error?.code !== 404) throw error;
   }
 
   return walletobjects.loyaltyclass.insert({
     requestBody: {
-      id: classId,
-      issuerName: "Wallet Business AI",
-      programName: "Loyalty Program",
+      id: business.classId,
+      issuerName: business.name,
+      programName: business.programName,
       programLogo: {
         sourceUri: {
-          uri: "https://farm4.staticflickr.com/3723/11177041115_6e6a3b6f49_o.jpg"
+          uri: business.logoUrl
         },
         contentDescription: {
           defaultValue: {
-            language: "en-US",
-            value: "Wallet Business AI loyalty program logo"
+            language: "es-CO",
+            value: `${business.name} loyalty program logo`
           }
         }
       },
@@ -48,12 +51,15 @@ export async function ensureLoyaltyClass() {
   });
 }
 
-export function buildLoyaltyObject(customer: LoyaltyCustomer) {
-  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`;
+export function buildLoyaltyObject(
+  business: Business,
+  customer: LoyaltyCustomer
+) {
+  const objectId = getObjectId(business, customer.id);
 
   return {
     id: objectId,
-    classId: env.GOOGLE_WALLET_CLASS_ID,
+    classId: business.classId,
     state: "ACTIVE",
     accountId: customer.id,
     accountName: customer.name,
@@ -70,8 +76,11 @@ export function buildLoyaltyObject(customer: LoyaltyCustomer) {
   };
 }
 
-export async function ensureLoyaltyObject(customer: LoyaltyCustomer) {
-  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`;
+export async function ensureLoyaltyObject(
+  business: Business,
+  customer: LoyaltyCustomer
+) {
+  const objectId = getObjectId(business, customer.id);
 
   try {
     const existing = await walletobjects.loyaltyobject.get({
@@ -83,14 +92,18 @@ export async function ensureLoyaltyObject(customer: LoyaltyCustomer) {
   }
 
   const result = await walletobjects.loyaltyobject.insert({
-    requestBody: buildLoyaltyObject(customer)
+    requestBody: buildLoyaltyObject(business, customer)
   });
 
   return result.data;
 }
 
-export async function updateLoyaltyPoints(customerId: string, points: number) {
-  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customerId}`;
+export async function updateLoyaltyPoints(
+  business: Business,
+  customerId: string,
+  points: number
+) {
+  const objectId = getObjectId(business, customerId);
 
   const result = await walletobjects.loyaltyobject.patch({
     resourceId: objectId,
@@ -107,16 +120,22 @@ export async function updateLoyaltyPoints(customerId: string, points: number) {
   return result.data;
 }
 
-export async function getLoyaltyObject(customerId: string) {
-  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customerId}`;
+export async function getLoyaltyObject(
+  business: Business,
+  customerId: string
+) {
+  const objectId = getObjectId(business, customerId);
   const result = await walletobjects.loyaltyobject.get({
     resourceId: objectId
   });
   return result.data;
 }
 
-export function createAddToWalletUrl(customer: LoyaltyCustomer) {
-  const object = buildLoyaltyObject(customer);
+export function createAddToWalletUrl(
+  business: Business,
+  customer: LoyaltyCustomer
+) {
+  const object = buildLoyaltyObject(business, customer);
 
   const token = jwt.sign(
     {
