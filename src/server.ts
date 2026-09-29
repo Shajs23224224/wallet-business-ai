@@ -10,6 +10,7 @@ import {
 } from "./wallet.js";
 import {
   createBusiness,
+  deleteBusiness,
   getBusiness,
   listBusinesses,
   updateCustomerPoints,
@@ -67,8 +68,10 @@ app.post("/api/businesses", async (req, res) => {
     return;
   }
 
+  let business: Awaited<ReturnType<typeof createBusiness>> | null = null;
+
   try {
-    const business = await createBusiness(parsed.data);
+    business = await createBusiness(parsed.data);
     const walletClass = await ensureLoyaltyClass(business);
 
     res.status(201).json({
@@ -79,6 +82,9 @@ app.post("/api/businesses", async (req, res) => {
       }
     });
   } catch (error) {
+    if (business) {
+      await deleteBusiness(business.id).catch(() => undefined);
+    }
     const apiError = googleApiError(error);
     console.error("Google Wallet business creation error:", apiError);
     res.status(502).json({
@@ -115,18 +121,26 @@ async function issueLoyaltyPass(
     });
   }
 
-  const customer = await upsertCustomer({
-    businessId: business.id,
+  const customer = {
     id: input.id,
     name: input.name,
     points: input.points ?? 0
-  });
+  };
 
   await ensureLoyaltyClass(business);
   const data = await ensureLoyaltyObject(business, customer);
   const addToWalletUrl = createAddToWalletUrl(business, customer);
+  const storedCustomer = await upsertCustomer({
+    businessId: business.id,
+    ...customer
+  });
 
-  return { business, customer, data, addToWalletUrl };
+  return {
+    business,
+    customer: storedCustomer,
+    data,
+    addToWalletUrl
+  };
 }
 
 app.post("/api/wallet/business/:businessId/loyalty/class", async (req, res) => {
