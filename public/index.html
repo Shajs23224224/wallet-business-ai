@@ -144,6 +144,15 @@
   </main>
 
   <script>
+    const API = "/api/v1";
+    const authCard = document.getElementById("auth-card");
+    const authForm = document.getElementById("auth-form");
+    const loginButton = document.getElementById("login-button");
+    const registerButton = document.getElementById("register-button");
+    const logout = document.getElementById("logout");
+    const appCards = [...document.querySelectorAll(".app-card")];
+    const tokenKey = "wallet_business_ai_token";
+
     const businessSelect = document.getElementById("business-select");
     const businessForm = document.getElementById("business-form");
     const loyaltyForm = document.getElementById("loyalty-form");
@@ -300,8 +309,8 @@
       data.points = Number(data.points || 0);
 
       try {
-        const response = await fetch(
-          `/api/wallet/business/${encodeURIComponent(selectedBusinessId())}/loyalty`,
+        const response = await apiFetch(
+          `/businesses/${encodeURIComponent(selectedBusinessId())}/loyalty`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -346,8 +355,8 @@
       data.points = Number(data.points || 0);
 
       try {
-        const response = await fetch(
-          `/api/wallet/business/${encodeURIComponent(selectedBusinessId())}/loyalty/${encodeURIComponent(data.id)}/points`,
+        const response = await apiFetch(
+          `/businesses/${encodeURIComponent(selectedBusinessId())}/loyalty/${encodeURIComponent(data.id)}/points`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
