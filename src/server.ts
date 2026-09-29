@@ -1,4 +1,5 @@
 import express from "express";
+import v1Router from "./routes/v1.js";
 import { z } from "zod";
 import { env } from "./config.js";
 import {
@@ -20,6 +21,7 @@ import {
 const app = express();
 app.use(express.json());
 app.use(express.static("public"));
+app.use("/api/v1", v1Router);
 
 function googleApiError(error: unknown) {
   const candidate = error as {
