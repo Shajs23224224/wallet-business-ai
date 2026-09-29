@@ -89,6 +89,32 @@ export async function ensureLoyaltyObject(customer: LoyaltyCustomer) {
   return result.data;
 }
 
+export async function updateLoyaltyPoints(customerId: string, points: number) {
+  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customerId}`;
+
+  const result = await walletobjects.loyaltyobject.patch({
+    resourceId: objectId,
+    requestBody: {
+      loyaltyPoints: {
+        label: "Puntos",
+        balance: {
+          int: points
+        }
+      }
+    }
+  });
+
+  return result.data;
+}
+
+export async function getLoyaltyObject(customerId: string) {
+  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customerId}`;
+  const result = await walletobjects.loyaltyobject.get({
+    resourceId: objectId
+  });
+  return result.data;
+}
+
 export function createAddToWalletUrl(customer: LoyaltyCustomer) {
   const object = buildLoyaltyObject(customer);
 
