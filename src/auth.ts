@@ -52,8 +52,8 @@ export async function loginUser(input: unknown) {
   };
 }
 
-export function authRequired(_req: Request, res: Response, next: NextFunction) {
-  const header = res.req.header("authorization");
+export function authRequired(req: Request, res: Response, next: NextFunction) {
+  const header = req.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
 
   if (!token) {
