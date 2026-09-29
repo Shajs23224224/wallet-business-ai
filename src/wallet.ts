@@ -20,6 +20,10 @@ export type LoyaltyCustomer = {
 };
 
 function getObjectId(business: Business, customerId: string) {
+  if (business.id === "default") {
+    return `${business.issuerId}.${customerId}`;
+  }
+
   return `${business.issuerId}.${business.id}_${customerId}`;
 }
 
