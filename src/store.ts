@@ -5,6 +5,7 @@ import { env } from "./config.js";
 
 export type Business = {
   id: string;
+  ownerUserId?: string;
   name: string;
   issuerId: string;
   classId: string;
