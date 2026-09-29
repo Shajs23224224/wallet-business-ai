@@ -9,6 +9,7 @@ import {
 
 const app = express();
 app.use(express.json());
+app.use(express.static("public"));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "wallet-business-ai" });
