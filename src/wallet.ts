@@ -33,7 +33,9 @@ export async function ensureLoyaltyClass() {
       issuerName: "Wallet Business AI",
       programName: "Loyalty Program",
       programLogo: {
-        sourceUri: { uri: "https://developers.google.com/static/wallet/images/generic-loyalty-card.png" }
+        sourceUri: {
+          uri: "https://developers.google.com/static/wallet/images/generic-loyalty-card.png"
+        }
       },
       reviewStatus: "UNDER_REVIEW"
     }
@@ -58,9 +60,22 @@ export function buildLoyaltyObject(customer: LoyaltyCustomer) {
   };
 }
 
-export async function createLoyaltyObject(customer: LoyaltyCustomer) {
-  const object = buildLoyaltyObject(customer);
-  const result = await walletobjects.loyaltyobject.insert({ requestBody: object });
+export async function ensureLoyaltyObject(customer: LoyaltyCustomer) {
+  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`;
+
+  try {
+    const existing = await walletobjects.loyaltyobject.get({
+      resourceId: objectId
+    });
+    return existing.data;
+  } catch (error: any) {
+    if (error?.code !== 404) throw error;
+  }
+
+  const result = await walletobjects.loyaltyobject.insert({
+    requestBody: buildLoyaltyObject(customer)
+  });
+
   return result.data;
 }
 
@@ -72,8 +87,14 @@ export function createAddToWalletUrl(customer: LoyaltyCustomer) {
       iss: env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       aud: "google",
       typ: "savetowallet",
+      iat: Math.floor(Date.now() / 1000),
       payload: {
-        loyaltyObjects: [object]
+        loyaltyObjects: [
+          {
+            id: object.id,
+            classId: object.classId
+          }
+        ]
       }
     },
     env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
