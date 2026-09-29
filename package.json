@@ -1,0 +1,26 @@
+{
+  "name": "wallet-business-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SaaS MVP for Google Wallet loyalty passes and coupons.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "googleapis": "^161.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
