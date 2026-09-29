@@ -120,6 +120,23 @@ export async function upsertCustomer(input: {
   return customer;
 }
 
+export async function updateCustomerPoints(
+  businessId: string,
+  customerId: string,
+  points: number
+) {
+  const data = await readStore();
+  const customer = data.customers.find(
+    (item) => item.businessId === businessId && item.id === customerId
+  );
+
+  if (!customer) return null;
+
+  customer.points = points;
+  await writeStore(data);
+  return customer;
+}
+
 export async function getCustomer(businessId: string, customerId: string) {
   return (
     (await readStore()).customers.find(
@@ -128,3 +145,4 @@ export async function getCustomer(businessId: string, customerId: string) {
     ) ?? null
   );
 }
+
