@@ -49,10 +49,23 @@
   <main class="grid">
     <section class="card">
       <h1>Wallet Business AI</h1>
-      <p>Administra programas de fidelización y tarjetas de clientes conectadas con Google Wallet.</p>
+      <p>Administración multiempresa de programas de fidelización conectados con Google Wallet.</p>
+      <button id="logout" type="button" hidden>Cerrar sesión</button>
     </section>
 
-    <section class="card">
+    <section class="card" id="auth-card">
+      <h2>Acceso</h2>
+      <form id="auth-form">
+        <label>Correo<input name="email" type="email" required autocomplete="email"></label>
+        <label>Contraseña<input name="password" type="password" required minlength="8" autocomplete="current-password"></label>
+        <div class="row">
+          <button id="login-button" type="submit">Iniciar sesión</button>
+          <button id="register-button" type="button">Crear cuenta</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card app-card" hidden>
       <h2>Negocio</h2>
       <p>Selecciona un negocio existente o crea uno nuevo.</p>
 
@@ -82,7 +95,7 @@
       </form>
     </section>
 
-    <section class="card">
+    <section class="card app-card" hidden>
       <h2>Crear tarjeta</h2>
       <form id="loyalty-form">
         <div class="row">
@@ -105,7 +118,7 @@
       </form>
     </section>
 
-    <section class="card">
+    <section class="card app-card" hidden>
       <h2>Actualizar puntos</h2>
       <form id="points-form">
         <div class="row">
@@ -142,13 +155,47 @@
       return businessSelect.value;
     }
 
+    function token() {
+      return localStorage.getItem(tokenKey);
+    }
+
+    function setAuthenticated(value) {
+      authCard.hidden = value;
+      logout.hidden = !value;
+      for (const card of appCards) card.hidden = !value;
+    }
+
+    function authHeaders(extra = {}) {
+      const current = token();
+      return current
+        ? { ...extra, Authorization: `Bearer ${current}` }
+        : extra;
+    }
+
+    async function apiFetch(path, options = {}) {
+      const response = await fetch(API + path, {
+        ...options,
+        headers: authHeaders({
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        })
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem(tokenKey);
+        setAuthenticated(false);
+      }
+
+      return response;
+    }
+
     function showResult(message) {
       result.hidden = false;
       result.textContent = message;
     }
 
     async function loadBusinesses() {
-      const response = await fetch("/api/businesses");
+      const response = await apiFetch("/businesses");
       const body = await response.json();
 
       if (!response.ok) {
@@ -164,12 +211,63 @@
       }
     }
 
+    authForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      loginButton.disabled = true;
+      const data = Object.fromEntries(new FormData(authForm));
+      try {
+        const response = await fetch(API + "/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "No se pudo iniciar sesión.");
+        localStorage.setItem(tokenKey, body.data.token);
+        authForm.reset();
+        setAuthenticated(true);
+        await loadBusinesses();
+        showResult("Sesión iniciada.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        loginButton.disabled = false;
+      }
+    });
+
+    registerButton.addEventListener("click", async () => {
+      const data = Object.fromEntries(new FormData(authForm));
+      try {
+        const response = await fetch(API + "/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "No se pudo crear la cuenta.");
+        localStorage.setItem(tokenKey, body.data.token);
+        authForm.reset();
+        setAuthenticated(true);
+        await loadBusinesses();
+        showResult("Cuenta creada y sesión iniciada.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      }
+    });
+
+    logout.addEventListener("click", () => {
+      localStorage.removeItem(tokenKey);
+      setAuthenticated(false);
+      businessSelect.innerHTML = "";
+      showResult("Sesión cerrada.");
+    });
+
     businessForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(businessForm));
 
       try {
-        const response = await fetch("/api/businesses", {
+        const response = await apiFetch("/businesses", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
@@ -269,9 +367,15 @@
       }
     });
 
-    loadBusinesses().catch((error) => {
-      showResult(error instanceof Error ? error.message : "No se pudieron cargar los negocios.");
-    });
+    if (token()) {
+      setAuthenticated(true);
+      loadBusinesses().catch((error) => {
+        showResult(error instanceof Error ? error.message : "No se pudieron cargar los negocios.");
+      });
+    } else {
+      setAuthenticated(false);
+      showResult("Inicia sesión para comenzar.");
+    }
   </script>
 </body>
 </html>
