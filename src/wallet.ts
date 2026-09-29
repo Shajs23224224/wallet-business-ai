@@ -51,6 +51,10 @@ export function buildLoyaltyObject(customer: LoyaltyCustomer) {
     state: "ACTIVE",
     accountId: customer.id,
     accountName: customer.name,
+    barcode: {
+      type: "QR_CODE",
+      value: customer.id
+    },
     loyaltyPoints: {
       label: "Puntos",
       balance: {
