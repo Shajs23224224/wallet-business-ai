@@ -42,6 +42,7 @@ app.post("/api/wallet/loyalty", async (req, res) => {
   }
 
   try {
+    await ensureLoyaltyClass();
     const data = await ensureLoyaltyObject(parsed.data);
     const addToWalletUrl = createAddToWalletUrl(parsed.data);
 
