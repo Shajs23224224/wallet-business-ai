@@ -12,72 +12,89 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; }
-    main {
-      width: min(760px, calc(100% - 32px));
-      margin: 48px auto;
-    }
+    main { width: min(860px, calc(100% - 32px)); margin: 40px auto; }
+    .grid { display: grid; gap: 20px; }
     .card {
       background: #fff;
       border: 1px solid #e4e8ee;
       border-radius: 18px;
-      padding: 28px;
+      padding: 24px;
       box-shadow: 0 12px 32px rgba(22, 34, 51, .08);
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
+    h2 { margin: 0 0 8px; font-size: 20px; }
     p { color: #667085; line-height: 1.5; }
-    form { display: grid; gap: 16px; margin-top: 24px; }
+    form { display: grid; gap: 14px; margin-top: 18px; }
     label { display: grid; gap: 8px; font-weight: 600; }
-    input {
-      width: 100%;
-      border: 1px solid #cfd6df;
-      border-radius: 10px;
-      padding: 12px 13px;
-      font: inherit;
+    input, select {
+      width: 100%; border: 1px solid #cfd6df; border-radius: 10px;
+      padding: 12px 13px; font: inherit; background: #fff;
     }
     button {
-      border: 0;
-      border-radius: 10px;
-      padding: 13px 16px;
-      font: inherit;
-      font-weight: 700;
-      cursor: pointer;
-      background: #172033;
-      color: #fff;
+      border: 0; border-radius: 10px; padding: 13px 16px; font: inherit;
+      font-weight: 700; cursor: pointer; background: #172033; color: #fff;
     }
     button:disabled { opacity: .6; cursor: wait; }
     #result {
-      margin-top: 20px;
-      padding: 16px;
-      border-radius: 12px;
-      background: #f0f4f8;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
+      margin-top: 20px; padding: 16px; border-radius: 12px;
+      background: #f0f4f8; white-space: pre-wrap; overflow-wrap: anywhere;
     }
-    a.wallet-link {
-      display: inline-block;
-      margin-top: 12px;
-      text-decoration: none;
-      font-weight: 700;
-    }
+    .wallet-link { display: inline-block; margin-top: 12px; font-weight: 700; }
     .muted { font-size: 13px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <main>
+  <main class="grid">
     <section class="card">
       <h1>Wallet Business AI</h1>
-      <p>Genera una tarjeta de fidelización y obtiene el enlace para añadirla a Google Wallet.</p>
+      <p>Administra programas de fidelización y tarjetas de clientes conectadas con Google Wallet.</p>
+    </section>
 
+    <section class="card">
+      <h2>Negocio</h2>
+      <p>Selecciona un negocio existente o crea uno nuevo.</p>
+
+      <label>
+        Negocio
+        <select id="business-select"></select>
+      </label>
+
+      <form id="business-form">
+        <div class="row">
+          <label>
+            Nombre del negocio
+            <input name="name" required maxlength="120" placeholder="Mi Negocio">
+          </label>
+          <label>
+            Nombre del programa
+            <input name="programName" maxlength="120" placeholder="Club de Clientes">
+          </label>
+        </div>
+
+        <label>
+          Logo HTTPS
+          <input name="logoUrl" type="url" required placeholder="https://ejemplo.com/logo.png">
+        </label>
+
+        <button type="submit">Crear negocio</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Crear tarjeta</h2>
       <form id="loyalty-form">
-        <label>
-          ID del cliente
-          <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
-        </label>
-
-        <label>
-          Nombre
-          <input name="name" required maxlength="120" placeholder="Cliente Demo">
-        </label>
+        <div class="row">
+          <label>
+            ID del cliente
+            <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
+          </label>
+          <label>
+            Nombre
+            <input name="name" required maxlength="120" placeholder="Cliente Demo">
+          </label>
+        </div>
 
         <label>
           Puntos iniciales
@@ -86,11 +103,12 @@
 
         <button id="submit" type="submit">Crear tarjeta</button>
       </form>
+    </section>
 
-      <div style="margin-top:28px;border-top:1px solid #e4e8ee;padding-top:24px">
-        <h2 style="margin:0 0 8px;font-size:20px">Actualizar puntos</h2>
-        <p>Modifica los puntos de una tarjeta ya emitida sin crear otra.</p>
-        <form id="points-form">
+    <section class="card">
+      <h2>Actualizar puntos</h2>
+      <form id="points-form">
+        <div class="row">
           <label>
             ID del cliente
             <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
@@ -99,65 +117,99 @@
             Nuevos puntos
             <input name="points" type="number" min="0" step="1" value="0">
           </label>
-          <button type="submit">Actualizar puntos</button>
-        </form>
-      </div>
+        </div>
 
-      <div id="result" hidden></div>
-      <p class="muted">El enlace de Google Wallet se genera en el servidor; las credenciales privadas nunca llegan al navegador.</p>
+        <button type="submit">Actualizar puntos</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Resultado</h2>
+      <div id="result">Listo.</div>
+      <p class="muted">Las credenciales privadas de Google Wallet permanecen en el servidor.</p>
     </section>
   </main>
 
   <script>
-    const form = document.getElementById("loyalty-form");
-    const button = document.getElementById("submit");
+    const businessSelect = document.getElementById("business-select");
+    const businessForm = document.getElementById("business-form");
+    const loyaltyForm = document.getElementById("loyalty-form");
+    const pointsForm = document.getElementById("points-form");
+    const submitButton = document.getElementById("submit");
     const result = document.getElementById("result");
 
-    const pointsForm = document.getElementById("points-form");
+    function selectedBusinessId() {
+      return businessSelect.value;
+    }
 
-    pointsForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      const data = Object.fromEntries(new FormData(pointsForm));
-      data.points = Number(data.points || 0);
-
+    function showResult(message) {
       result.hidden = false;
-      result.textContent = "Actualizando puntos...";
+      result.textContent = message;
+    }
 
-      try {
-        const response = await fetch(`/api/wallet/loyalty/${encodeURIComponent(data.id)}/points`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ points: data.points })
-        });
+    async function loadBusinesses() {
+      const response = await fetch("/api/businesses");
+      const body = await response.json();
 
-        const body = await response.json();
-
-        if (!response.ok) {
-          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
-        }
-
-        result.textContent = "Puntos actualizados correctamente.";
-      } catch (error) {
-        result.textContent = error instanceof Error ? error.message : "Error inesperado.";
+      if (!response.ok) {
+        throw new Error(body.error || "No se pudieron cargar los negocios.");
       }
-    });
 
-    form.addEventListener("submit", async (event) => {
+      businessSelect.innerHTML = "";
+      for (const business of body.data) {
+        const option = document.createElement("option");
+        option.value = business.id;
+        option.textContent = business.name;
+        businessSelect.appendChild(option);
+      }
+    }
+
+    businessForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      button.disabled = true;
-      result.hidden = false;
-      result.textContent = "Creando tarjeta...";
-
-      const data = Object.fromEntries(new FormData(form));
-      data.points = Number(data.points || 0);
+      const data = Object.fromEntries(new FormData(businessForm));
 
       try {
-        const response = await fetch("/api/wallet/loyalty", {
+        const response = await fetch("/api/businesses", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
         });
+        const body = await response.json();
+
+        if (!response.ok) {
+          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear el negocio.");
+        }
+
+        await loadBusinesses();
+        businessSelect.value = body.data.business.id;
+        businessForm.reset();
+        showResult("Negocio creado y Loyalty Class preparada.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      }
+    });
+
+    loyaltyForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Primero selecciona o crea un negocio.");
+        return;
+      }
+
+      submitButton.disabled = true;
+      const data = Object.fromEntries(new FormData(loyaltyForm));
+      data.points = Number(data.points || 0);
+
+      try {
+        const response = await fetch(
+          `/api/wallet/business/${encodeURIComponent(selectedBusinessId())}/loyalty`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+          }
+        );
 
         const body = await response.json();
 
@@ -178,10 +230,47 @@
 
         result.append(status, link);
       } catch (error) {
-        result.textContent = error instanceof Error ? error.message : "Error inesperado.";
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
       } finally {
-        button.disabled = false;
+        submitButton.disabled = false;
       }
+    });
+
+    pointsForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Primero selecciona o crea un negocio.");
+        return;
+      }
+
+      const data = Object.fromEntries(new FormData(pointsForm));
+      data.points = Number(data.points || 0);
+
+      try {
+        const response = await fetch(
+          `/api/wallet/business/${encodeURIComponent(selectedBusinessId())}/loyalty/${encodeURIComponent(data.id)}/points`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ points: data.points })
+          }
+        );
+
+        const body = await response.json();
+
+        if (!response.ok) {
+          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
+        }
+
+        showResult("Puntos actualizados correctamente.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      }
+    });
+
+    loadBusinesses().catch((error) => {
+      showResult(error instanceof Error ? error.message : "No se pudieron cargar los negocios.");
     });
   </script>
 </body>
