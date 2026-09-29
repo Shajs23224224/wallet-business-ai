@@ -1,7 +1,11 @@
 import express from "express";
 import { z } from "zod";
 import { env } from "./config.js";
-import { createAddToWalletUrl, createLoyaltyObject, ensureLoyaltyClass } from "./wallet.js";
+import {
+  createAddToWalletUrl,
+  ensureLoyaltyClass,
+  ensureLoyaltyObject
+} from "./wallet.js";
 
 const app = express();
 app.use(express.json());
@@ -16,7 +20,10 @@ app.post("/api/wallet/loyalty/class", async (_req, res) => {
     res.status(200).json({ ok: true, data: result.data });
   } catch (error) {
     console.error(error);
-    res.status(502).json({ ok: false, error: "Unable to create or retrieve loyalty class" });
+    res.status(502).json({
+      ok: false,
+      error: "Unable to create or retrieve loyalty class"
+    });
   }
 });
 
@@ -34,12 +41,20 @@ app.post("/api/wallet/loyalty", async (req, res) => {
   }
 
   try {
-    const data = await createLoyaltyObject(parsed.data);
+    const data = await ensureLoyaltyObject(parsed.data);
     const addToWalletUrl = createAddToWalletUrl(parsed.data);
-    res.status(201).json({ ok: true, data, addToWalletUrl });
+
+    res.status(201).json({
+      ok: true,
+      data,
+      addToWalletUrl
+    });
   } catch (error) {
     console.error(error);
-    res.status(502).json({ ok: false, error: "Unable to create loyalty pass" });
+    res.status(502).json({
+      ok: false,
+      error: "Unable to create or retrieve loyalty pass"
+    });
   }
 });
 
