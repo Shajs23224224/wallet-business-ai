@@ -91,6 +91,23 @@ export async function createBusiness(input: {
   return business;
 }
 
+export async function deleteBusiness(businessId: string) {
+  const data = await readStore();
+  const before = data.businesses.length;
+  data.businesses = data.businesses.filter((business) => business.id !== businessId);
+
+  if (data.businesses.length === before) {
+    return false;
+  }
+
+  data.customers = data.customers.filter(
+    (customer) => customer.businessId !== businessId
+  );
+
+  await writeStore(data);
+  return true;
+}
+
 export async function upsertCustomer(input: {
   businessId: string;
   id: string;
