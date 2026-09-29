@@ -97,3 +97,65 @@ También admite `workflow_dispatch` para ejecuciones manuales.
 4. Cupones/Offers.
 5. Integración de Gemini para convertir instrucciones del negocio en campañas estructuradas.
 6. Autenticación, planes y suscripciones.
+
+
+## Conectar Google Wallet
+
+Para activar la conexión real, configura estos valores como **Secrets/Environment Variables** en el entorno donde se ejecute el backend:
+
+```text
+GOOGLE_WALLET_ISSUER_ID
+GOOGLE_WALLET_CLASS_ID
+GOOGLE_SERVICE_ACCOUNT_EMAIL
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+```
+
+No subas el archivo JSON de la cuenta de servicio al repositorio.
+
+### Google Cloud / Google Wallet
+
+Google requiere una cuenta de servicio para autenticar las llamadas REST a Google Wallet. La cuenta de servicio debe estar autorizada para el Issuer en Google Wallet Business Console. La clave privada es información sensible y debe permanecer solamente en el servidor o en el gestor de secretos del despliegue.
+
+El flujo de este proyecto es:
+
+```text
+Cliente
+  ↓
+Panel Wallet Business AI
+  ↓
+/api/wallet/loyalty
+  ↓
+Google Wallet REST API
+  ↓
+Loyalty Class + Loyalty Object
+  ↓
+JWT RS256
+  ↓
+https://pay.google.com/gp/v/save/<JWT>
+  ↓
+Google Wallet del cliente
+```
+
+### Valores de ejemplo
+
+El Class ID debe pertenecer al Issuer, por ejemplo:
+
+```text
+1234567890123456789.WalletBusinessAILoyalty
+```
+
+No copies este valor literalmente: usa tu Issuer ID real.
+
+### Verificación
+
+Después de configurar las credenciales, comprueba:
+
+```bash
+curl http://localhost:3000/health
+curl -X POST http://localhost:3000/api/wallet/loyalty/class
+curl -X POST http://localhost:3000/api/wallet/loyalty \
+  -H "Content-Type: application/json" \
+  -d '{"id":"cliente-001","name":"Cliente Demo","points":100}'
+```
+
+La última respuesta debe incluir `addToWalletUrl`. Al abrir ese enlace con una cuenta de Google autenticada, el usuario puede guardar la tarjeta en Google Wallet.
