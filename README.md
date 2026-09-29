@@ -159,3 +159,89 @@ curl -X POST http://localhost:3000/api/wallet/loyalty \
 ```
 
 La última respuesta debe incluir `addToWalletUrl`. Al abrir ese enlace con una cuenta de Google autenticada, el usuario puede guardar la tarjeta en Google Wallet.
+
+
+## Fase 3 — PostgreSQL + autenticación
+
+La nueva API autenticada vive bajo `/api/v1`. Las rutas antiguas se mantienen temporalmente para compatibilidad.
+
+### Variables nuevas
+
+```env
+DATABASE_URL=postgresql://USUARIO:CONTRASEÑA@HOST:5432/BASE
+DATABASE_SSL=false
+JWT_SECRET=una-clave-aleatoria-de-al-menos-32-caracteres
+```
+
+Para proveedores administrados que requieren TLS, usa:
+
+```env
+DATABASE_SSL=true
+```
+
+### Migrar la base de datos
+
+Con `DATABASE_URL` configurado:
+
+```bash
+npm install
+npm run db:migrate
+```
+
+La migración crea:
+
+- `users`
+- `businesses`
+- `customers`
+
+Los negocios quedan ligados a su propietario mediante `owner_user_id`. Las consultas de `/api/v1` filtran por ese propietario para evitar acceso cruzado entre empresas.
+
+### Registrar el primer usuario
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"CAMBIA_ESTA_CONTRASEÑA"}'
+```
+
+La respuesta contiene un JWT. Úsalo como:
+
+```text
+Authorization: Bearer <TOKEN>
+```
+
+### Iniciar sesión
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"CAMBIA_ESTA_CONTRASEÑA"}'
+```
+
+### Consultar negocios del usuario
+
+```bash
+curl http://localhost:3000/api/v1/businesses \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### Crear un negocio
+
+```bash
+curl -X POST http://localhost:3000/api/v1/businesses \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Mi Negocio","programName":"Club de Clientes","logoUrl":"https://ejemplo.com/logo.png"}'
+```
+
+Cuando se crea el negocio, el backend crea también su Loyalty Class en Google Wallet.
+
+### Seguridad
+
+- Las contraseñas se almacenan con bcrypt.
+- Los JWT se firman con HS256 y `JWT_SECRET`.
+- Las rutas de negocio verifican que el usuario autenticado sea el propietario.
+- La private key de Google Wallet permanece fuera de Git.
+- PostgreSQL sustituye el almacenamiento JSON para la API nueva.
+
+La dependencia `pg` usa el cliente oficial node-postgres y soporta ESM, pooling y PostgreSQL moderno. `bcryptjs` proporciona hashing de contraseñas con soporte TypeScript. citeturn962751search1turn962751search5turn962751search0
