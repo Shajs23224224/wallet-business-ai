@@ -11,6 +11,27 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
+function googleApiError(error: unknown) {
+  const candidate = error as {
+    code?: number;
+    response?: {
+      data?: {
+        error?: {
+          code?: number;
+          status?: string;
+          message?: string;
+        };
+      };
+    };
+  };
+
+  return {
+    code: candidate.code ?? candidate.response?.data?.error?.code ?? null,
+    status: candidate.response?.data?.error?.status ?? null,
+    message: candidate.response?.data?.error?.message ?? null
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "wallet-business-ai" });
 });
@@ -20,10 +41,12 @@ app.post("/api/wallet/loyalty/class", async (_req, res) => {
     const result = await ensureLoyaltyClass();
     res.status(200).json({ ok: true, data: result.data });
   } catch (error) {
-    console.error(error);
+    const apiError = googleApiError(error);
+    console.error("Google Wallet class error:", apiError);
     res.status(502).json({
       ok: false,
-      error: "Unable to create or retrieve loyalty class"
+      error: "Unable to create or retrieve loyalty class",
+      google: apiError
     });
   }
 });
