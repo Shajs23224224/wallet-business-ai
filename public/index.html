@@ -87,6 +87,22 @@
         <button id="submit" type="submit">Crear tarjeta</button>
       </form>
 
+      <div style="margin-top:28px;border-top:1px solid #e4e8ee;padding-top:24px">
+        <h2 style="margin:0 0 8px;font-size:20px">Actualizar puntos</h2>
+        <p>Modifica los puntos de una tarjeta ya emitida sin crear otra.</p>
+        <form id="points-form">
+          <label>
+            ID del cliente
+            <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
+          </label>
+          <label>
+            Nuevos puntos
+            <input name="points" type="number" min="0" step="1" value="0">
+          </label>
+          <button type="submit">Actualizar puntos</button>
+        </form>
+      </div>
+
       <div id="result" hidden></div>
       <p class="muted">El enlace de Google Wallet se genera en el servidor; las credenciales privadas nunca llegan al navegador.</p>
     </section>
@@ -96,6 +112,36 @@
     const form = document.getElementById("loyalty-form");
     const button = document.getElementById("submit");
     const result = document.getElementById("result");
+
+    const pointsForm = document.getElementById("points-form");
+
+    pointsForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const data = Object.fromEntries(new FormData(pointsForm));
+      data.points = Number(data.points || 0);
+
+      result.hidden = false;
+      result.textContent = "Actualizando puntos...";
+
+      try {
+        const response = await fetch(`/api/wallet/loyalty/${encodeURIComponent(data.id)}/points`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ points: data.points })
+        });
+
+        const body = await response.json();
+
+        if (!response.ok) {
+          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
+        }
+
+        result.textContent = "Puntos actualizados correctamente.";
+      } catch (error) {
+        result.textContent = error instanceof Error ? error.message : "Error inesperado.";
+      }
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
