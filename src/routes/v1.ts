@@ -6,6 +6,7 @@ import { query } from "../db.js";
 import { authRequired, loginUser, registerUser } from "../auth.js";
 import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints, updateLoyaltyCustomer, updateLoyaltyClass } from "../wallet.js";
 import { logoUpload, publicUploadUrl } from "../uploads.js";
+import { createOfferAddToWalletUrl, ensureOfferClass, ensureOfferObject, type OfferRecord, type RedemptionChannel } from "../offers.js";
 import type { Business } from "../store.js";
 
 const router = Router();
@@ -169,6 +170,216 @@ router.get("/businesses", async (_req, res) => {
     [userId]
   );
   res.json({ ok: true, data: result.rows });
+});
+
+const offerCreateSchema = z.object({
+  title: z.string().trim().min(2).max(60),
+  details: z.string().trim().min(2).max(500),
+  finePrint: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().trim().max(1000).optional()
+  ),
+  redemptionChannel: z.enum(["INSTORE", "ONLINE", "BOTH"]),
+  code: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  startsAt: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().datetime({ local: true }).optional()
+  ),
+  endsAt: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().datetime({ local: true }).optional()
+  )
+});
+
+function parseOfferDates(input: z.infer<typeof offerCreateSchema>) {
+  const startsAt = input.startsAt ? new Date(input.startsAt).toISOString() : null;
+  const endsAt = input.endsAt ? new Date(input.endsAt).toISOString() : null;
+
+  if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
+    throw new Error("OFFER_END_BEFORE_START");
+  }
+
+  return { startsAt, endsAt };
+}
+
+router.get("/businesses/:businessId/offers", async (req, res) => {
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const result = await query<OfferRecord & { issuedCount: number }>(
+    `SELECT o.id::text, o.business_id::text as "businessId", o.title, o.details,
+            o.fine_print as "finePrint", o.provider,
+            o.redemption_channel as "redemptionChannel", o.code,
+            o.starts_at as "startsAt", o.ends_at as "endsAt",
+            o.state, o.class_id as "classId",
+            o.created_at as "createdAt", o.updated_at as "updatedAt",
+            COUNT(oo.id)::int as "issuedCount"
+       FROM offers o
+       LEFT JOIN offer_objects oo ON oo.offer_id = o.id
+      WHERE o.business_id = $1
+      GROUP BY o.id
+      ORDER BY o.created_at DESC`,
+    [business.id]
+  );
+
+  res.json({ ok: true, data: result.rows });
+});
+
+router.post("/businesses/:businessId/offers", async (req, res) => {
+  const parsed = offerCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  let dates: { startsAt: string | null; endsAt: string | null };
+  try {
+    dates = parseOfferDates(parsed.data);
+  } catch (error) {
+    if (error instanceof Error && error.message === "OFFER_END_BEFORE_START") {
+      res.status(400).json({ ok: false, error: "La fecha de finalización debe ser posterior a la de inicio." });
+      return;
+    }
+    throw error;
+  }
+
+  const id = randomUUID();
+  const classId = `${business.issuerId}.offer_${id.replaceAll("-", "")}`;
+  const offer: OfferRecord = {
+    id,
+    businessId: business.id,
+    title: parsed.data.title,
+    details: parsed.data.details,
+    finePrint: parsed.data.finePrint ?? null,
+    provider: business.name,
+    redemptionChannel: parsed.data.redemptionChannel as RedemptionChannel,
+    code: parsed.data.code,
+    startsAt: dates.startsAt,
+    endsAt: dates.endsAt,
+    state: "ACTIVE",
+    classId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  await query(
+    `INSERT INTO offers
+      (id, business_id, title, details, fine_print, provider, redemption_channel, code, starts_at, ends_at, state, class_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      offer.id, offer.businessId, offer.title, offer.details, offer.finePrint, offer.provider,
+      offer.redemptionChannel, offer.code, offer.startsAt, offer.endsAt, offer.state, offer.classId
+    ]
+  );
+
+  try {
+    const walletClass = await ensureOfferClass(business, offer);
+    res.status(201).json({ ok: true, data: { offer, walletClass: walletClass.data } });
+  } catch (error) {
+    await query("DELETE FROM offers WHERE id = $1 AND business_id = $2", [offer.id, business.id]);
+    const api = googleApiError(error);
+    console.error("Google Wallet offer class creation error:", api);
+    res.status(502).json({ ok: false, error: "No se pudo crear la campaña de cupón en Google Wallet.", google: api });
+  }
+});
+
+router.post("/businesses/:businessId/offers/:offerId/customers/:customerId", async (req, res) => {
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const offerResult = await query<OfferRecord>(
+    `SELECT id::text, business_id::text as "businessId", title, details,
+            fine_print as "finePrint", provider,
+            redemption_channel as "redemptionChannel", code,
+            starts_at as "startsAt", ends_at as "endsAt",
+            state, class_id as "classId",
+            created_at as "createdAt", updated_at as "updatedAt"
+       FROM offers
+      WHERE id = $1 AND business_id = $2`,
+    [req.params.offerId, business.id]
+  );
+
+  const offer = offerResult.rows[0];
+  if (!offer) {
+    res.status(404).json({ ok: false, error: "Offer not found" });
+    return;
+  }
+
+  if (offer.state !== "ACTIVE") {
+    res.status(409).json({ ok: false, error: "La campaña de cupón está inactiva." });
+    return;
+  }
+
+  const customerResult = await query<{
+    id: string;
+    externalId: string;
+    name: string;
+    walletObjectId: string | null;
+  }>(
+    `SELECT id::text, external_id as "externalId", name, wallet_object_id as "walletObjectId"
+       FROM customers
+      WHERE business_id = $1 AND external_id = $2`,
+    [business.id, req.params.customerId]
+  );
+
+  const customer = customerResult.rows[0];
+  if (!customer) {
+    res.status(404).json({ ok: false, error: "Customer not found" });
+    return;
+  }
+
+  try {
+    await ensureOfferClass(business, offer);
+    const walletObject = await ensureOfferObject(business, offer, {
+      rowId: customer.id,
+      externalId: customer.externalId
+    });
+
+    await query(
+      `INSERT INTO offer_objects (id, offer_id, customer_id, wallet_object_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (offer_id, customer_id)
+       DO UPDATE SET wallet_object_id = EXCLUDED.wallet_object_id`,
+      [randomUUID(), offer.id, customer.id, walletObject.id]
+    );
+
+    const addToWalletUrl = createOfferAddToWalletUrl(offer, {
+      rowId: customer.id,
+      externalId: customer.externalId
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: {
+        offer,
+        customer: {
+          id: customer.externalId,
+          name: customer.name
+        },
+        walletObject
+      },
+      addToWalletUrl
+    });
+  } catch (error) {
+    const api = googleApiError(error);
+    console.error("Google Wallet offer issuance error:", api);
+    res.status(502).json({ ok: false, error: "No se pudo emitir el cupón en Google Wallet.", google: api });
+  }
 });
 
 router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
