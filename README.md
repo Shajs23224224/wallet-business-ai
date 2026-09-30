@@ -245,11 +245,41 @@ La migración correspondiente es `004_offers.sql`.
 
 Google Wallet usa `OfferClass` para definir el contenido compartido de una oferta y `OfferObject` para la instancia individual.
 
+## Fase 8 — Gestión y ciclo de vida de cupones
+
+La gestión de ofertas permite editar campañas existentes y sincronizar los cambios con Google Wallet, incluyendo los Offer Objects que ya fueron emitidos.
+
+La API autenticada ahora incluye:
+
+```text
+PATCH /api/v1/businesses/:businessId/offers/:offerId
+POST  /api/v1/businesses/:businessId/offers/:offerId/sync
+```
+
+Una campaña puede estar administrativamente `ACTIVE` o `INACTIVE`. El backend calcula además su estado operativo:
+
+- `ACTIVE` — puede emitirse.
+- `SCHEDULED` — todavía no comienza por su fecha de inicio.
+- `INACTIVE` — campaña pausada.
+- `EXPIRED` — la fecha de finalización ya pasó.
+
+Al editar una campaña, Wallet Business AI actualiza la `OfferClass` y sincroniza los `OfferObject` existentes para reflejar código, fechas, estado y contenido.
+
+Los objetos con `validTimeInterval` utilizan fechas ISO 8601 y Google Wallet puede moverlos a la sección de pases vencidos cuando termina el intervalo o cuando el objeto se marca como `EXPIRED`.
+
+Desde el dashboard se puede:
+
+1. editar una campaña;
+2. activar o pausar una campaña;
+3. sincronizar manualmente una campaña;
+4. ver si está activa, programada, inactiva o expirada;
+5. emitir únicamente campañas actualmente disponibles.
+
 ## Siguiente fase
 
-1. Automatización con Gemini para crear campañas a partir de instrucciones del negocio.
-2. Mejoras de cupones: edición, activación/desactivación y redención.
-3. Analítica de clientes y campañas.
+1. Redención de cupones con registro de uso.
+2. Analítica de clientes y campañas.
+3. Automatización con Gemini para crear campañas.
 4. Autenticación reforzada, planes y suscripciones.
 
 
