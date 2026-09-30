@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
 import { authRequired, loginUser, registerUser } from "../auth.js";
-import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints } from "../wallet.js";
+import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints, updateLoyaltyCustomer } from "../wallet.js";
 import type { Business } from "../store.js";
 
 const router = Router();
@@ -18,6 +18,11 @@ const customerSchema = z.object({
   points: z.number().int().nonnegative().default(0)
 });
 const pointsSchema = z.object({ points: z.number().int().nonnegative() });
+const customerEditSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  points: z.number().int().nonnegative(),
+  status: z.enum(["ACTIVE", "INACTIVE"])
+});
 
 function googleApiError(error: unknown) {
   const candidate = error as { code?: number; response?: { data?: { error?: { code?: number; status?: string; message?: string } } } };
@@ -177,11 +182,12 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
     id: string;
     name: string;
     points: number;
+    status: "ACTIVE" | "INACTIVE";
     walletObjectId: string | null;
     createdAt: string;
     updatedAt: string;
   }>(
-    "SELECT external_id as id, name, points, wallet_object_id as \"walletObjectId\", created_at as \"createdAt\", updated_at as \"updatedAt\" FROM customers WHERE business_id = $1 ORDER BY updated_at DESC",
+    "SELECT external_id as id, name, points, status, wallet_object_id as \"walletObjectId\", created_at as \"createdAt\", updated_at as \"updatedAt\" FROM customers WHERE business_id = $1 ORDER BY updated_at DESC",
     [business.id]
   );
 
@@ -198,6 +204,63 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
       customers: result.rows
     }
   });
+});
+
+router.patch("/businesses/:businessId/customers/:customerId", async (req, res) => {
+  const parsed = customerEditSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const existing = await query<{
+    external_id: string;
+    name: string;
+    points: number;
+    status: "ACTIVE" | "INACTIVE";
+  }>(
+    "SELECT external_id, name, points, status FROM customers WHERE business_id = $1 AND external_id = $2",
+    [business.id, req.params.customerId]
+  );
+
+  if (!existing.rows[0]) {
+    res.status(404).json({ ok: false, error: "Customer not found" });
+    return;
+  }
+
+  const next = parsed.data;
+
+  try {
+    const data = await updateLoyaltyCustomer(business, req.params.customerId, next);
+    await query(
+      "UPDATE customers SET name = $1, points = $2, status = $3, updated_at = NOW() WHERE business_id = $4 AND external_id = $5",
+      [next.name, next.points, next.status, business.id, req.params.customerId]
+    );
+
+    res.json({
+      ok: true,
+      data: {
+        customer: {
+          id: req.params.customerId,
+          name: next.name,
+          points: next.points,
+          status: next.status
+        },
+        walletObject: data
+      }
+    });
+  } catch (error) {
+    const api = googleApiError(error);
+    console.error("Full customer update error:", api);
+    res.status(502).json({ ok: false, error: "Unable to update customer", google: api });
+  }
 });
 
 router.patch("/businesses/:businessId/loyalty/:customerId/points", async (req, res) => {
