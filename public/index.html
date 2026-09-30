@@ -43,6 +43,10 @@
       background: #f0f4f8; white-space: pre-wrap; overflow-wrap: anywhere;
     }
     .wallet-link { display: inline-block; margin-top: 12px; font-weight: 700; }
+    .logo-preview {
+      width: 72px; height: 72px; object-fit: contain; border-radius: 12px;
+      border: 1px solid #e4e8ee; background: #fff; margin-top: 8px;
+    }
     .muted { font-size: 13px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -144,6 +148,7 @@
           <h2>Negocio</h2>
           <p>Selecciona un negocio existente o crea uno nuevo.</p>
         </div>
+        <button id="edit-business-toggle" class="secondary small" type="button">Editar negocio</button>
       </div>
       <label>
         Negocio
@@ -155,8 +160,33 @@
           <label>Nombre del negocio<input name="name" required maxlength="120" placeholder="Mi Negocio"></label>
           <label>Nombre del programa<input name="programName" maxlength="120" placeholder="Club de Clientes"></label>
         </div>
-        <label>Logo HTTPS<input name="logoUrl" type="url" required placeholder="https://ejemplo.com/logo.png"></label>
+        <label>Logo por imagen
+          <input name="logo" type="file" accept="image/jpeg,image/png,image/webp">
+        </label>
+        <label>o usa una URL HTTPS
+          <input name="logoUrl" type="url" placeholder="https://ejemplo.com/logo.png">
+        </label>
+        <img id="create-logo-preview" class="logo-preview" alt="Vista previa del logo" hidden>
+        <p class="muted">Puedes subir JPG, PNG o WebP. Para usar un logo subido con Google Wallet, el servidor debe tener una URL pública HTTPS.</p>
         <button type="submit">Crear negocio</button>
+      </form>
+
+      <form id="edit-business-form" hidden>
+        <div class="row">
+          <label>Nombre del negocio<input name="name" required maxlength="120"></label>
+          <label>Nombre del programa<input name="programName" maxlength="120" required></label>
+        </div>
+        <label>Nueva imagen del logo
+          <input name="logo" type="file" accept="image/jpeg,image/png,image/webp">
+        </label>
+        <label>o nueva URL HTTPS
+          <input name="logoUrl" type="url" placeholder="https://ejemplo.com/logo.png">
+        </label>
+        <img id="edit-logo-preview" class="logo-preview" alt="Vista previa del logo" hidden>
+        <div class="row">
+          <button id="save-business-button" type="submit">Guardar cambios</button>
+          <button id="cancel-business-edit" class="secondary" type="button">Cancelar</button>
+        </div>
       </form>
     </section>
 
@@ -315,6 +345,12 @@
 
     const businessSelect = document.getElementById("business-select");
     const businessForm = document.getElementById("business-form");
+    const editBusinessForm = document.getElementById("edit-business-form");
+    const editBusinessToggle = document.getElementById("edit-business-toggle");
+    const cancelBusinessEdit = document.getElementById("cancel-business-edit");
+    const saveBusinessButton = document.getElementById("save-business-button");
+    const createLogoPreview = document.getElementById("create-logo-preview");
+    const editLogoPreview = document.getElementById("edit-logo-preview");
     const loyaltyForm = document.getElementById("loyalty-form");
     const editCustomerForm = document.getElementById("edit-customer-form");
     const saveEditButton = document.getElementById("save-edit-button");
@@ -345,6 +381,7 @@
     const customerNext = document.getElementById("customer-next");
 
     let customerPage = 1;
+    let businessCache = [];
     let customerPageSizeValue = 25;
     let customerSortValue = "updatedAt";
     let customerOrderValue = "desc";
@@ -395,6 +432,32 @@
       return new Intl.NumberFormat("es-CO").format(Number(value || 0));
     }
 
+    function syncBusinessEditor() {
+      const business = businessCache.find((item) => item.id === selectedBusinessId());
+      if (!business) {
+        editBusinessForm.hidden = true;
+        editBusinessToggle.hidden = true;
+        return;
+      }
+      editBusinessToggle.hidden = false;
+      editBusinessForm.elements.name.value = business.name;
+      editBusinessForm.elements.programName.value = business.programName;
+      editBusinessForm.elements.logoUrl.value = business.logoUrl;
+      editLogoPreview.src = business.logoUrl;
+      editLogoPreview.hidden = false;
+    }
+
+    function previewLogo(input, image) {
+      const file = input.files && input.files[0];
+      if (!file) {
+        image.hidden = true;
+        image.removeAttribute("src");
+        return;
+      }
+      image.src = URL.createObjectURL(file);
+      image.hidden = false;
+    }
+
     function formatDate(value) {
       if (!value) return "—";
       const date = new Date(value);
@@ -439,6 +502,7 @@
       if (!response.ok) throw new Error(body.error || "No se pudieron cargar los negocios.");
 
       const previous = localStorage.getItem(selectedBusinessKey);
+      businessCache = body.data;
       businessSelect.innerHTML = "";
 
       for (const business of body.data) {
@@ -458,6 +522,7 @@
       }
 
       syncGuidance();
+      syncBusinessEditor();
       await loadDashboard();
     }
 
@@ -723,23 +788,50 @@
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar la página siguiente."));
     });
 
+    editBusinessToggle.addEventListener("click", () => {
+      const hidden = editBusinessForm.hidden;
+      editBusinessForm.hidden = !hidden;
+      if (!hidden) {
+        editBusinessForm.elements.logoUrl.value = "";
+        editLogoPreview.hidden = true;
+      }
+      if (hidden) {
+        syncBusinessEditor();
+        editBusinessForm.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+
+    cancelBusinessEdit.addEventListener("click", () => {
+      editBusinessForm.hidden = true;
+      syncBusinessEditor();
+      showResult("Edición del negocio cancelada.");
+    });
+
+    businessForm.elements.logo.addEventListener("change", () => previewLogo(businessForm.elements.logo, createLogoPreview));
+    editBusinessForm.elements.logo.addEventListener("change", () => previewLogo(editBusinessForm.elements.logo, editLogoPreview));
+
     businessSelect.addEventListener("change", () => {
       resetCustomerPage();
       localStorage.setItem(selectedBusinessKey, selectedBusinessId());
       syncGuidance();
+      syncBusinessEditor();
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar el negocio."));
       if (selectedBusinessId()) showResult("Negocio seleccionado. Dashboard actualizado.");
     });
 
     businessForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const data = Object.fromEntries(new FormData(businessForm));
+      const formData = new FormData(businessForm);
+
+      if (!formData.get("logo") && !String(formData.get("logoUrl") || "").trim()) {
+        showResult("Selecciona una imagen para el logo o introduce una URL HTTPS.");
+        return;
+      }
 
       try {
         const response = await apiFetch("/businesses", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data)
+          body: formData
         });
         const body = await response.json();
 
@@ -749,11 +841,50 @@
         businessSelect.value = body.data.business.id;
         localStorage.setItem(selectedBusinessKey, body.data.business.id);
         businessForm.reset();
+        createLogoPreview.hidden = true;
         syncGuidance();
         await loadDashboard();
         showResult("Negocio creado y Loyalty Class preparada. Ahora registra tu primer cliente.");
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
+      }
+    });
+
+    editBusinessForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Selecciona un negocio antes de editarlo.");
+        return;
+      }
+
+      saveBusinessButton.disabled = true;
+      const formData = new FormData(editBusinessForm);
+      const file = formData.get("logo");
+      if (file instanceof File && file.size === 0) {
+        formData.delete("logo");
+      }
+      if (!String(formData.get("logoUrl") || "").trim()) {
+        formData.delete("logoUrl");
+      }
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()),
+          { method: "PATCH", body: formData }
+        );
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo actualizar el negocio.");
+
+        await loadBusinesses();
+        editBusinessForm.hidden = true;
+        syncBusinessEditor();
+        await loadDashboard();
+        showResult("Negocio actualizado y branding sincronizado con Google Wallet.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        saveBusinessButton.disabled = false;
       }
     });
 
