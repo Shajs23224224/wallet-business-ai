@@ -6,7 +6,7 @@ import { query } from "../db.js";
 import { authRequired, loginUser, registerUser } from "../auth.js";
 import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints, updateLoyaltyCustomer, updateLoyaltyClass } from "../wallet.js";
 import { logoUpload, publicUploadUrl } from "../uploads.js";
-import { createOfferAddToWalletUrl, ensureOfferClass, ensureOfferObject, type OfferRecord, type RedemptionChannel } from "../offers.js";
+import { createOfferAddToWalletUrl, ensureOfferClass, ensureOfferObject, getOfferLifecycleState, syncOfferObject, updateOfferClass, type OfferRecord, type RedemptionChannel } from "../offers.js";
 import type { Business } from "../store.js";
 
 const router = Router();
@@ -191,6 +191,28 @@ const offerCreateSchema = z.object({
   )
 });
 
+const offerUpdateSchema = z.object({
+  title: z.string().trim().min(2).max(60).optional(),
+  details: z.string().trim().min(2).max(500).optional(),
+  finePrint: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().trim().max(1000).nullable().optional()
+  ),
+  redemptionChannel: z.enum(["INSTORE", "ONLINE", "BOTH"]).optional(),
+  code: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
+  startsAt: z.preprocess(
+    (value) => value === "" ? null : value,
+    z.string().datetime({ local: true }).nullable().optional()
+  ),
+  endsAt: z.preprocess(
+    (value) => value === "" ? null : value,
+    z.string().datetime({ local: true }).nullable().optional()
+  ),
+  state: z.enum(["ACTIVE", "INACTIVE"]).optional()
+}).refine((value) => Object.keys(value).length > 0, {
+  message: "At least one offer field must be provided"
+});
+
 function parseOfferDates(input: z.infer<typeof offerCreateSchema>) {
   const startsAt = input.startsAt ? new Date(input.startsAt).toISOString() : null;
   const endsAt = input.endsAt ? new Date(input.endsAt).toISOString() : null;
@@ -200,6 +222,14 @@ function parseOfferDates(input: z.infer<typeof offerCreateSchema>) {
   }
 
   return { startsAt, endsAt };
+}
+
+function normalizeOfferDate(
+  value: string | null | undefined,
+  current: string | null
+) {
+  if (value === undefined) return current;
+  return value === null ? null : new Date(value).toISOString();
 }
 
 router.get("/businesses/:businessId/offers", async (req, res) => {
@@ -226,10 +256,16 @@ router.get("/businesses/:businessId/offers", async (req, res) => {
     [business.id]
   );
 
-  res.json({ ok: true, data: result.rows });
+  res.json({
+    ok: true,
+    data: result.rows.map((offer) => ({
+      ...offer,
+      lifecycleState: getOfferLifecycleState(offer)
+    }))
+  });
 });
 
-router.post("/businesses/:businessId/offers", async (req, res) => {
+router.post("/businesses/:businessId/offers", async (req, res) => {}
   const parsed = offerCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
@@ -294,6 +330,209 @@ router.post("/businesses/:businessId/offers", async (req, res) => {
   }
 });
 
+router.patch("/businesses/:businessId/offers/:offerId", async (req, res) => {
+  const parsed = offerUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const currentResult = await query<OfferRecord>(
+    `SELECT id::text, business_id::text as "businessId", title, details,
+            fine_print as "finePrint", provider,
+            redemption_channel as "redemptionChannel", code,
+            starts_at as "startsAt", ends_at as "endsAt",
+            state, class_id as "classId",
+            created_at as "createdAt", updated_at as "updatedAt"
+       FROM offers
+      WHERE id = $1 AND business_id = $2`,
+    [req.params.offerId, business.id]
+  );
+
+  const current = currentResult.rows[0];
+  if (!current) {
+    res.status(404).json({ ok: false, error: "Offer not found" });
+    return;
+  }
+
+  const startsAt = normalizeOfferDate(parsed.data.startsAt, current.startsAt);
+  const endsAt = normalizeOfferDate(parsed.data.endsAt, current.endsAt);
+
+  if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
+    res.status(400).json({ ok: false, error: "La fecha de finalización debe ser posterior a la de inicio." });
+    return;
+  }
+
+  const next: OfferRecord = {
+    ...current,
+    title: parsed.data.title ?? current.title,
+    details: parsed.data.details ?? current.details,
+    finePrint: Object.prototype.hasOwnProperty.call(parsed.data, "finePrint")
+      ? (parsed.data.finePrint ?? null)
+      : current.finePrint,
+    redemptionChannel: parsed.data.redemptionChannel ?? current.redemptionChannel,
+    code: parsed.data.code ?? current.code,
+    startsAt,
+    endsAt,
+    state: parsed.data.state ?? current.state,
+    provider: business.name,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (next.state === "ACTIVE" && getOfferLifecycleState(next) === "EXPIRED") {
+    res.status(409).json({
+      ok: false,
+      error: "No se puede activar una campaña cuya fecha de finalización ya pasó."
+    });
+    return;
+  }
+
+  await query(
+    `UPDATE offers
+        SET title = $1,
+            details = $2,
+            fine_print = $3,
+            provider = $4,
+            redemption_channel = $5,
+            code = $6,
+            starts_at = $7,
+            ends_at = $8,
+            state = $9,
+            updated_at = NOW()
+      WHERE id = $10 AND business_id = $11`,
+    [
+      next.title,
+      next.details,
+      next.finePrint,
+      next.provider,
+      next.redemptionChannel,
+      next.code,
+      next.startsAt,
+      next.endsAt,
+      next.state,
+      next.id,
+      business.id
+    ]
+  );
+
+  try {
+    await updateOfferClass(business, next);
+
+    const objectResult = await query<{
+      rowId: string;
+      externalId: string;
+      walletObjectId: string;
+    }>(
+      `SELECT oo.customer_id::text as "rowId",
+              c.external_id as "externalId",
+              oo.wallet_object_id as "walletObjectId"
+         FROM offer_objects oo
+         JOIN customers c ON c.id = oo.customer_id
+        WHERE oo.offer_id = $1`,
+      [next.id]
+    );
+
+    for (const object of objectResult.rows) {
+      await syncOfferObject(business, next, {
+        rowId: object.rowId,
+        externalId: object.externalId
+      });
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        offer: {
+          ...next,
+          lifecycleState: getOfferLifecycleState(next)
+        },
+        syncedObjects: objectResult.rows.length
+      }
+    });
+  } catch (error) {
+    const api = googleApiError(error);
+    console.error("Google Wallet offer update error:", api);
+    res.status(502).json({
+      ok: false,
+      error: "La campaña se guardó, pero no se pudo sincronizar completamente con Google Wallet.",
+      google: api
+    });
+  }
+});
+
+router.post("/businesses/:businessId/offers/:offerId/sync", async (req, res) => {
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const offerResult = await query<OfferRecord>(
+    `SELECT id::text, business_id::text as "businessId", title, details,
+            fine_print as "finePrint", provider,
+            redemption_channel as "redemptionChannel", code,
+            starts_at as "startsAt", ends_at as "endsAt",
+            state, class_id as "classId",
+            created_at as "createdAt", updated_at as "updatedAt"
+       FROM offers
+      WHERE id = $1 AND business_id = $2`,
+    [req.params.offerId, business.id]
+  );
+
+  const offer = offerResult.rows[0];
+  if (!offer) {
+    res.status(404).json({ ok: false, error: "Offer not found" });
+    return;
+  }
+
+  try {
+    await updateOfferClass(business, offer);
+
+    const objectResult = await query<{
+      rowId: string;
+      externalId: string;
+    }>(
+      `SELECT oo.customer_id::text as "rowId",
+              c.external_id as "externalId"
+         FROM offer_objects oo
+         JOIN customers c ON c.id = oo.customer_id
+        WHERE oo.offer_id = $1`,
+      [offer.id]
+    );
+
+    for (const object of objectResult.rows) {
+      await syncOfferObject(business, offer, object);
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        offer: {
+          ...offer,
+          lifecycleState: getOfferLifecycleState(offer)
+        },
+        syncedObjects: objectResult.rows.length
+      }
+    });
+  } catch (error) {
+    const api = googleApiError(error);
+    console.error("Google Wallet offer manual sync error:", api);
+    res.status(502).json({
+      ok: false,
+      error: "No se pudo sincronizar la campaña con Google Wallet.",
+      google: api
+    });
+  }
+});
+
 router.post("/businesses/:businessId/offers/:offerId/customers/:customerId", async (req, res) => {
   const userId = res.locals.userId as string;
   const business = await ownedBusiness(userId, req.params.businessId);
@@ -320,8 +559,17 @@ router.post("/businesses/:businessId/offers/:offerId/customers/:customerId", asy
     return;
   }
 
-  if (offer.state !== "ACTIVE") {
-    res.status(409).json({ ok: false, error: "La campaña de cupón está inactiva." });
+  const lifecycleState = getOfferLifecycleState(offer);
+  if (lifecycleState !== "ACTIVE") {
+    const messages: Record<string, string> = {
+      INACTIVE: "La campaña de cupón está inactiva.",
+      SCHEDULED: "La campaña todavía no ha comenzado.",
+      EXPIRED: "La campaña de cupón ya expiró."
+    };
+    res.status(409).json({
+      ok: false,
+      error: messages[lifecycleState] ?? "La campaña no está disponible para emisión."
+    });
     return;
   }
 
