@@ -38,6 +38,6 @@ export const logoUpload = multer({
 });
 
 export function publicUploadUrl(req: { protocol: string; get(name: string): string | undefined }, filename: string) {
-  const baseUrl = env.PUBLIC_BASE_URL?.replace(//+$/, "") ?? `${req.protocol}://${req.get("host")}`;
+  const baseUrl = env.PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? `${req.protocol}://${req.get("host")}`;
   return `${baseUrl}/uploads/logos/${encodeURIComponent(filename)}`;
 }
