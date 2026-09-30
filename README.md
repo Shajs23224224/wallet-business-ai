@@ -213,14 +213,44 @@ Authorization: Bearer <TOKEN>
 
 Puede recibir `name`, `programName`, `logoUrl` o un archivo multipart llamado `logo`. Después de guardar los cambios, la Loyalty Class se sincroniza con Google Wallet.
 
+## Fase 7 — Cupones y Offers
+
+Wallet Business AI incorpora campañas de cupones como **Offer Class** y cupones individuales como **Offer Object** de Google Wallet.
+
+La API autenticada incluye:
+
+```text
+GET  /api/v1/businesses/:businessId/offers
+POST /api/v1/businesses/:businessId/offers
+POST /api/v1/businesses/:businessId/offers/:offerId/customers/:customerId
+Authorization: Bearer <TOKEN>
+```
+
+Una campaña permite definir:
+
+- título y descripción;
+- condiciones;
+- código de cupón;
+- canal de redención: `INSTORE`, `ONLINE` o `BOTH`;
+- fecha de inicio y fecha de finalización.
+
+Al emitir un cupón a un cliente, el backend crea o recupera el `OfferObject`, lo relaciona con la tarjeta de fidelización del cliente y devuelve un enlace firmado de **Añadir a Google Wallet**.
+
+La persistencia se encuentra en:
+
+- `offers`;
+- `offer_objects`.
+
+La migración correspondiente es `004_offers.sql`.
+
+Google documenta que `OfferClass` define el contenido compartido de una oferta y `OfferObject` representa la instancia individual; también documenta los canales `INSTORE`, `ONLINE` y `BOTH`. citeturn621950search0turn621950search1
+
 ## Siguiente fase
 
-1. Panel web para negocios.
-2. Persistencia multiempresa.
-3. Branding por negocio.
-4. Cupones/Offers.
-5. Integración de Gemini para convertir instrucciones del negocio en campañas estructuradas.
-6. Autenticación, planes y suscripciones.
+1. Automatización con Gemini para crear campañas a partir de instrucciones del negocio.
+2. Mejoras de cupones: edición, activación/desactivación y redención.
+3. Analítica de clientes y campañas.
+4. Autenticación reforzada, planes y suscripciones.
 
 
 ## Conectar Google Wallet
