@@ -56,6 +56,29 @@ export async function ensureLoyaltyClass(business: Business) {
   });
 }
 
+export async function updateLoyaltyClass(business: Business) {
+  const result = await walletobjects.loyaltyclass.patch({
+    resourceId: business.classId,
+    requestBody: {
+      issuerName: business.name,
+      programName: business.programName,
+      programLogo: {
+        sourceUri: {
+          uri: business.logoUrl
+        },
+        contentDescription: {
+          defaultValue: {
+            language: "es-CO",
+            value: `${business.name} loyalty program logo`
+          }
+        }
+      }
+    }
+  });
+
+  return result.data;
+}
+
 export function buildLoyaltyObject(
   business: Business,
   customer: LoyaltyCustomer
