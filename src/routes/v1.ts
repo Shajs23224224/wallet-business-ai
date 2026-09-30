@@ -47,7 +47,11 @@ function uploadLogoMiddleware(req: any, res: any, next: any) {
   });
 }
 
-function resolveLogoUrl(req: any, file: Express.Multer.File | undefined, fallback?: string) {
+function resolveLogoUrl(
+  req: any,
+  file: Express.Multer.File | undefined,
+  fallback?: string
+): { logoUrl?: string; error?: string } {
   const uploaded = file ? publicUploadUrl(req, file.filename) : undefined;
   const logoUrl = uploaded ?? fallback;
 
@@ -151,9 +155,9 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
   }
 
   const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl);
-  if (logo.error) {
+  if (logo.error || !logo.logoUrl) {
     if (req.file) await unlink(req.file.path).catch(() => undefined);
-    res.status(400).json({ ok: false, error: logo.error });
+    res.status(400).json({ ok: false, error: logo.error ?? "A logo image or HTTPS logo URL is required" });
     return;
   }
 
@@ -212,9 +216,9 @@ router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) =
   }
 
   const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl ?? current.logoUrl);
-  if (logo.error) {
+  if (logo.error || !logo.logoUrl) {
     if (req.file) await unlink(req.file.path).catch(() => undefined);
-    res.status(400).json({ ok: false, error: logo.error });
+    res.status(400).json({ ok: false, error: logo.error ?? "A logo image or HTTPS logo URL is required" });
     return;
   }
 
