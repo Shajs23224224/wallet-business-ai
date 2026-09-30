@@ -124,6 +124,30 @@ export async function updateLoyaltyPoints(
   return result.data;
 }
 
+export async function updateLoyaltyCustomer(
+  business: Business,
+  customerId: string,
+  customer: { name: string; points: number; status: "ACTIVE" | "INACTIVE" }
+) {
+  const objectId = getObjectId(business, customerId);
+
+  const result = await walletobjects.loyaltyobject.patch({
+    resourceId: objectId,
+    requestBody: {
+      accountName: customer.name,
+      state: customer.status,
+      loyaltyPoints: {
+        label: "Puntos",
+        balance: {
+          int: customer.points
+        }
+      }
+    }
+  });
+
+  return result.data;
+}
+
 export async function getLoyaltyObject(
   business: Business,
   customerId: string
