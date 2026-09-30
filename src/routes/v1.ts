@@ -8,6 +8,7 @@ import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyal
 import { logoUpload, publicUploadUrl } from "../uploads.js";
 import { completeOfferObject, createOfferAddToWalletUrl, ensureOfferClass, ensureOfferObject, getOfferLifecycleState, syncOfferObject, updateOfferClass, type OfferRecord, type RedemptionChannel } from "../offers.js";
 import type { Business } from "../store.js";
+import { aiOfferDraftSchema, generateOfferDraft } from "../gemini.js";
 
 const router = Router();
 
@@ -189,6 +190,10 @@ const offerCreateSchema = z.object({
     (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
     z.string().datetime({ local: true }).optional()
   )
+});
+
+const aiOfferPromptSchema = z.object({
+  prompt: z.string().trim().min(10).max(1200)
 });
 
 const offerUpdateSchema = z.object({
@@ -409,6 +414,70 @@ router.get("/businesses/:businessId/analytics", async (req, res) => {
     }
   });
 });
+router.post("/businesses/:businessId/ai/offers/preview", async (req, res) => {
+  const parsed = aiOfferPromptSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  try {
+    const draft = await generateOfferDraft(business, parsed.data.prompt);
+    const validated = aiOfferDraftSchema.safeParse(draft);
+
+    if (!validated.success) {
+      console.error("Gemini offer draft validation error:", validated.error.flatten());
+      res.status(502).json({ ok: false, error: "Gemini generó un borrador que no cumple las validaciones." });
+      return;
+    }
+
+    const startsAt = validated.data.startsAt ? new Date(validated.data.startsAt) : null;
+    const endsAt = validated.data.endsAt ? new Date(validated.data.endsAt) : null;
+
+    if (startsAt && endsAt && endsAt <= startsAt) {
+      res.status(502).json({ ok: false, error: "Gemini generó un intervalo de fechas inválido. Intenta describir mejor la duración de la campaña." });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        draft: validated.data,
+        note: "Borrador generado. La creación final sigue pasando por las validaciones normales de campañas y Google Wallet."
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "GEMINI_NOT_CONFIGURED") {
+      res.status(503).json({
+        ok: false,
+        error: "La asistencia de Gemini no está configurada. Define GEMINI_API_KEY en el servidor."
+      });
+      return;
+    }
+
+    if (error instanceof Error && error.message === "GEMINI_EMPTY_RESPONSE") {
+      res.status(502).json({ ok: false, error: "Gemini no devolvió un borrador." });
+      return;
+    }
+
+    if (error instanceof Error && (error.message === "GEMINI_INVALID_JSON" || error.name === "ZodError")) {
+      console.error("Gemini offer draft parsing error:", error);
+      res.status(502).json({ ok: false, error: "Gemini devolvió una estructura inválida para la campaña." });
+      return;
+    }
+
+    console.error("Gemini offer preview error:", error);
+    res.status(502).json({ ok: false, error: "No se pudo generar el borrador con Gemini." });
+  }
+});
+
 router.get("/businesses/:businessId/offers", async (req, res) => {
   const userId = res.locals.userId as string;
   const business = await ownedBusiness(userId, req.params.businessId);
