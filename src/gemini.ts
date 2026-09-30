@@ -56,7 +56,10 @@ function geminiClient() {
     throw new Error("GEMINI_NOT_CONFIGURED");
   }
 
-  return new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  return new GoogleGenAI({
+    apiKey: env.GEMINI_API_KEY,
+    httpOptions: { timeout: 30_000 }
+  });
 }
 
 function extractJson(text: string) {
@@ -100,7 +103,8 @@ export async function generateOfferDraft(
     prompt
   ].join("\n");
 
-  const response = await client.models.generateContent({
+  try {
+    const response = await client.models.generateContent({
     model: env.GEMINI_MODEL,
     contents: input,
     config: {
@@ -109,10 +113,25 @@ export async function generateOfferDraft(
     }
   });
 
-  const text = typeof response.text === "string" ? response.text.trim() : "";
-  if (!text) {
-    throw new Error("GEMINI_EMPTY_RESPONSE");
-  }
+    const text = typeof response.text === "string" ? response.text.trim() : "";
+    if (!text) {
+      throw new Error("GEMINI_EMPTY_RESPONSE");
+    }
 
-  return aiOfferDraftSchema.parse(extractJson(text));
+    return aiOfferDraftSchema.parse(extractJson(text));
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "UnknownError";
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Gemini request failed:", { name, message });
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("GEMINI_TIMEOUT");
+    }
+    if (error instanceof Error && (
+      error.message === "GEMINI_EMPTY_RESPONSE" ||
+      error.message === "GEMINI_INVALID_JSON"
+    )) {
+      throw error;
+    }
+    throw new Error("GEMINI_REQUEST_FAILED");
+  }
 }
