@@ -89,6 +89,34 @@ npm run build
 
 También admite `workflow_dispatch` para ejecuciones manuales.
 
+## Migraciones versionadas
+
+Las migraciones SQL se ejecutan en orden por nombre y quedan registradas en `schema_migrations`. Cada archivo se aplica una sola vez dentro de una transacción.
+
+Archivos actuales:
+
+- `001_init.sql` — esquema inicial.
+- `002_customer_status.sql` — estado `ACTIVE/INACTIVE` del cliente.
+
+Ejecuta:
+
+```bash
+npm run db:migrate
+```
+
+El runner usa un bloqueo transaccional de PostgreSQL para evitar dos procesos de migración concurrentes.
+
+## Búsqueda y filtrado de clientes
+
+El dashboard permite buscar por nombre o ID y filtrar por estado. La búsqueda se ejecuta en el backend para no cargar toda la lista en el navegador.
+
+```text
+GET /api/v1/businesses/:businessId/customers?q=cliente&status=ACTIVE
+Authorization: Bearer <TOKEN>
+```
+
+`status` acepta `ALL`, `ACTIVE` o `INACTIVE`.
+
 ## Fase 4 — Dashboard y gestión de clientes
 
 La API autenticada ahora incluye un dashboard operativo para administrar clientes por negocio.
