@@ -354,3 +354,44 @@ La analítica utiliza `customers`, `offers`, `offer_objects` y `offer_redemption
 2. Autenticación reforzada, roles y seguridad operativa.
 3. Planes, suscripciones y límites SaaS.
 4. Despliegue de producción y observabilidad.
+
+## Fase 12 — Asistente de campañas con Gemini
+
+El dashboard incorpora un asistente de IA para convertir una instrucción en lenguaje natural en un borrador estructurado de campaña de cupones.
+
+Endpoint autenticado:
+
+```text
+POST /api/v1/businesses/:businessId/ai/offers/preview
+Authorization: Bearer <TOKEN>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{"prompt":"Crea un cupón del 20% para clientes nuevos durante 7 días, válido en tienda."}
+```
+
+Gemini devuelve:
+
+- título;
+- descripción;
+- condiciones;
+- canal de redención;
+- código;
+- inicio y finalización.
+
+La salida se solicita como JSON estructurado y vuelve a validarse con Zod en el servidor. La campaña no se crea automáticamente durante la generación: el usuario revisa el borrador y después el dashboard reutiliza el endpoint normal de creación de ofertas. Esto mantiene las mismas validaciones, aislamiento por negocio y sincronización con Google Wallet.
+
+### Configuración de Gemini
+
+Añade al servidor:
+
+```env
+GEMINI_API_KEY=tu_clave_de_gemini
+GEMINI_MODEL=gemini-3.8-flash
+```
+
+La clave nunca se envía al navegador y no debe almacenarse en Git.
+
