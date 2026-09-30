@@ -89,6 +89,34 @@ npm run build
 
 También admite `workflow_dispatch` para ejecuciones manuales.
 
+## Fase 4 — Dashboard y gestión de clientes
+
+La API autenticada ahora incluye un dashboard operativo para administrar clientes por negocio.
+
+### Clientes y métricas
+
+GET /api/v1/businesses/:businessId/customers
+Authorization: Bearer <TOKEN>
+
+La respuesta incluye:
+
+- información del negocio seleccionado
+- total de clientes
+- total de puntos
+- clientes con su ID, nombre, puntos y fecha de actualización
+- identificador del objeto de Google Wallet cuando existe
+
+El panel web permite:
+
+1. seleccionar el negocio;
+2. consultar métricas del negocio;
+3. ver la lista de clientes;
+4. generar el enlace de Google Wallet de un cliente;
+5. cargar un cliente en el formulario de puntos;
+6. actualizar los puntos y refrescar el dashboard.
+
+El enlace de Google Wallet se genera bajo demanda en el servidor y la clave privada nunca llega al navegador.
+
 ## Siguiente fase
 
 1. Panel web para negocios.
