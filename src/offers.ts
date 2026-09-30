@@ -14,6 +14,7 @@ const auth = new google.auth.GoogleAuth({
 const walletobjects = google.walletobjects({ version: "v1", auth });
 
 export type RedemptionChannel = "INSTORE" | "ONLINE" | "BOTH";
+export type OfferLifecycleState = "ACTIVE" | "INACTIVE" | "SCHEDULED" | "EXPIRED";
 
 export type OfferRecord = {
   id: string;
@@ -50,6 +51,27 @@ function buildValidity(offer: OfferRecord) {
   return {
     ...(offer.startsAt ? { start: { date: offer.startsAt } } : {}),
     ...(offer.endsAt ? { end: { date: offer.endsAt } } : {})
+  };
+}
+
+export function getOfferLifecycleState(
+  offer: Pick<OfferRecord, "state" | "startsAt" | "endsAt">,
+  now = new Date()
+): OfferLifecycleState {
+  if (offer.state === "INACTIVE") return "INACTIVE";
+  if (offer.endsAt && new Date(offer.endsAt) <= now) return "EXPIRED";
+  if (offer.startsAt && new Date(offer.startsAt) > now) return "SCHEDULED";
+  return "ACTIVE";
+}
+
+function buildOfferClassBody(business: Business, offer: OfferRecord) {
+  return {
+    issuerName: business.name,
+    provider: offer.provider.slice(0, 12),
+    title: offer.title,
+    redemptionChannel: offer.redemptionChannel,
+    details: offer.details,
+    ...(offer.finePrint ? { finePrint: offer.finePrint } : {})
   };
 }
 
@@ -90,7 +112,10 @@ export function buildOfferObject(
   return {
     id: objectId,
     classId: offer.classId,
-    state: offer.state,
+    state: (() => {
+      const lifecycle = getOfferLifecycleState(offer);
+      return lifecycle === "EXPIRED" ? "EXPIRED" : lifecycle === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+    })(),
     barcode: {
       type: "QR_CODE",
       value: offer.code
@@ -120,19 +145,50 @@ export async function ensureOfferObject(
   const object = buildOfferObject(business, offer, customer);
 
   try {
-    const existing = await walletobjects.offerobject.get({
-      resourceId: object.id
+    const existing = await walletobjects.offerobject.get({ resourceId: object.id });
+    const updatedObject: Record<string, unknown> = { ...existing.data, ...object };
+
+    if (object.validTimeInterval) updatedObject.validTimeInterval = object.validTimeInterval;
+    else delete updatedObject.validTimeInterval;
+
+    const updated = await walletobjects.offerobject.update({
+      resourceId: object.id,
+      requestBody: updatedObject
     });
-    return existing.data;
+    return updated.data;
   } catch (error: any) {
     if (error?.code !== 404) throw error;
   }
 
-  const result = await walletobjects.offerobject.insert({
-    requestBody: object
-  });
-
+  const result = await walletobjects.offerobject.insert({ requestBody: object });
   return result.data;
+}
+
+export async function updateOfferClass(business: Business, offer: OfferRecord) {
+  const classId = classIdFor(offer, business.issuerId);
+  return walletobjects.offerclass.patch({
+    resourceId: classId,
+    requestBody: buildOfferClassBody(business, offer)
+  });
+}
+
+export async function syncOfferObject(
+  business: Business,
+  offer: OfferRecord,
+  customer: { rowId: string; externalId: string }
+) {
+  const object = buildOfferObject(business, offer, customer);
+  const existing = await walletobjects.offerobject.get({ resourceId: object.id });
+  const updatedObject: Record<string, unknown> = { ...existing.data, ...object };
+
+  if (object.validTimeInterval) updatedObject.validTimeInterval = object.validTimeInterval;
+  else delete updatedObject.validTimeInterval;
+
+  const updated = await walletobjects.offerobject.update({
+    resourceId: object.id,
+    requestBody: updatedObject
+  });
+  return updated.data;
 }
 
 export function createOfferAddToWalletUrl(
