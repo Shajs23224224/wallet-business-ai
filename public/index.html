@@ -12,7 +12,7 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; }
-    main { width: min(860px, calc(100% - 32px)); margin: 40px auto; }
+    main { width: min(1080px, calc(100% - 32px)); margin: 32px auto 56px; }
     .grid { display: grid; gap: 20px; }
     .card {
       background: #fff;
@@ -23,6 +23,7 @@
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
     h2 { margin: 0 0 8px; font-size: 20px; }
+    h3 { margin: 0; font-size: 15px; }
     p { color: #667085; line-height: 1.5; }
     form { display: grid; gap: 14px; margin-top: 18px; }
     label { display: grid; gap: 8px; font-weight: 600; }
@@ -34,6 +35,8 @@
       border: 0; border-radius: 10px; padding: 13px 16px; font: inherit;
       font-weight: 700; cursor: pointer; background: #172033; color: #fff;
     }
+    button.secondary { background: #eef2f6; color: #172033; }
+    button.small { padding: 8px 10px; font-size: 13px; }
     button:disabled { opacity: .6; cursor: wait; }
     #result {
       margin-top: 20px; padding: 16px; border-radius: 12px;
@@ -42,24 +45,17 @@
     .wallet-link { display: inline-block; margin-top: 12px; font-weight: 700; }
     .muted { font-size: 13px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .guide {
-      border: 1px solid #cfe1ff;
-      background: #f6f9ff;
-    }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .guide { border: 1px solid #cfe1ff; background: #f6f9ff; }
     .guide-title { margin-bottom: 6px; }
     .guide-step {
-      display: grid;
-      grid-template-columns: 34px 1fr;
-      gap: 12px;
-      align-items: start;
-      padding: 12px 0;
-      border-top: 1px solid #e4eaf3;
+      display: grid; grid-template-columns: 34px 1fr; gap: 12px;
+      align-items: start; padding: 12px 0; border-top: 1px solid #e4eaf3;
     }
     .guide-step:first-of-type { border-top: 0; }
     .guide-number {
       width: 34px; height: 34px; border-radius: 50%;
-      display: grid; place-items: center;
-      background: #172033; color: #fff; font-weight: 800;
+      display: grid; place-items: center; background: #172033; color: #fff; font-weight: 800;
     }
     .guide-step strong { display: block; margin-bottom: 3px; }
     .guide-step span { color: #667085; line-height: 1.45; }
@@ -68,28 +64,52 @@
       background: #eef7ee; color: #245b2a; font-weight: 600;
     }
     .empty-state {
-      margin-top: 12px; padding: 12px 14px; border-radius: 10px;
+      margin-top: 12px; padding: 14px; border-radius: 10px;
       background: #fff7e6; color: #7a4d00;
     }
-    @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+    .stat { border: 1px solid #e4e8ee; border-radius: 14px; padding: 16px; background: #fafbfc; }
+    .stat-value { font-size: 28px; font-weight: 800; margin-top: 6px; }
+    .business-meta { color: #667085; font-size: 14px; }
+    .table-wrap { overflow-x: auto; margin-top: 16px; border: 1px solid #e4e8ee; border-radius: 14px; }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    th, td { padding: 13px 14px; text-align: left; border-bottom: 1px solid #edf0f3; font-size: 14px; }
+    th { background: #f8fafc; color: #667085; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: 0; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill { display: inline-flex; padding: 5px 9px; border-radius: 999px; background: #eef7ee; color: #245b2a; font-size: 12px; font-weight: 700; }
+    .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    @media (max-width: 780px) {
+      .row, .stats { grid-template-columns: 1fr; }
+      main { width: min(100% - 20px, 1080px); margin-top: 18px; }
+      .card { padding: 18px; }
+    }
   </style>
 </head>
 <body>
   <main class="grid">
     <section class="card">
-      <h1>Wallet Business AI</h1>
-      <p>Administración multiempresa de programas de fidelización conectados con Google Wallet.</p>
-      <button id="logout" type="button" hidden>Cerrar sesión</button>
+      <div class="toolbar">
+        <div>
+          <h1>Wallet Business AI</h1>
+          <p>Administración multiempresa de programas de fidelización conectados con Google Wallet.</p>
+        </div>
+        <div class="header-actions">
+          <button id="refresh-dashboard" class="secondary small" type="button" hidden>Actualizar</button>
+          <button id="logout" type="button" hidden>Cerrar sesión</button>
+        </div>
+      </div>
     </section>
 
     <section class="card" id="auth-card">
       <h2>Acceso</h2>
+      <p>Inicia sesión para administrar tus negocios y clientes.</p>
       <form id="auth-form">
         <label>Correo<input name="email" type="email" required autocomplete="email"></label>
         <label>Contraseña<input name="password" type="password" required minlength="8" autocomplete="current-password"></label>
         <div class="row">
           <button id="login-button" type="submit">Iniciar sesión</button>
-          <button id="register-button" type="button">Crear cuenta</button>
+          <button id="register-button" type="button" class="secondary">Crear cuenta</button>
         </div>
       </form>
     </section>
@@ -99,39 +119,30 @@
       <p>Sigue estos pasos en orden. El sistema te irá indicando qué hacer según tu estado.</p>
       <div class="guide-step">
         <div class="guide-number">1</div>
-        <div>
-          <strong>Selecciona o crea tu negocio</strong>
-          <span>Primero necesitas un negocio. Aquí se configura su programa de fidelización de Google Wallet.</span>
-        </div>
+        <div><strong>Selecciona o crea tu negocio</strong><span>Primero necesitas un negocio. Aquí se configura su programa de fidelización de Google Wallet.</span></div>
       </div>
       <div class="guide-step">
         <div class="guide-number">2</div>
-        <div>
-          <strong>Crea la tarjeta del cliente</strong>
-          <span>Cuando tengas un negocio seleccionado, podrás crear una tarjeta con el nombre, ID y puntos iniciales.</span>
-        </div>
+        <div><strong>Crea la tarjeta del cliente</strong><span>Registra al cliente con un ID único, su nombre y sus puntos iniciales.</span></div>
       </div>
       <div class="guide-step">
         <div class="guide-number">3</div>
-        <div>
-          <strong>Añade la tarjeta a Google Wallet</strong>
-          <span>Después de crearla aparecerá el botón “Añadir a Google Wallet”. Envía ese enlace al cliente o ábrelo tú.</span>
-        </div>
+        <div><strong>Añade la tarjeta a Google Wallet</strong><span>Después de crearla aparecerá el enlace para añadirla a Google Wallet.</span></div>
       </div>
       <div class="guide-step">
         <div class="guide-number">4</div>
-        <div>
-          <strong>Actualiza los puntos</strong>
-          <span>Cuando el cliente acumule o use puntos, selecciona el negocio, escribe su ID y establece el nuevo saldo.</span>
-        </div>
+        <div><strong>Administra clientes y puntos</strong><span>Usa el dashboard para consultar clientes y actualizar sus puntos cuando cambie su saldo.</span></div>
       </div>
       <div id="guide-status" class="status-message">Inicia sesión para comenzar.</div>
     </section>
 
     <section class="card app-card" hidden>
-      <h2>Negocio</h2>
-      <p>Selecciona un negocio existente o crea uno nuevo.</p>
-
+      <div class="toolbar">
+        <div>
+          <h2>Negocio</h2>
+          <p>Selecciona un negocio existente o crea uno nuevo.</p>
+        </div>
+      </div>
       <label>
         Negocio
         <select id="business-select"></select>
@@ -139,62 +150,71 @@
 
       <form id="business-form">
         <div class="row">
-          <label>
-            Nombre del negocio
-            <input name="name" required maxlength="120" placeholder="Mi Negocio">
-          </label>
-          <label>
-            Nombre del programa
-            <input name="programName" maxlength="120" placeholder="Club de Clientes">
-          </label>
+          <label>Nombre del negocio<input name="name" required maxlength="120" placeholder="Mi Negocio"></label>
+          <label>Nombre del programa<input name="programName" maxlength="120" placeholder="Club de Clientes"></label>
         </div>
-
-        <label>
-          Logo HTTPS
-          <input name="logoUrl" type="url" required placeholder="https://ejemplo.com/logo.png">
-        </label>
-
+        <label>Logo HTTPS<input name="logoUrl" type="url" required placeholder="https://ejemplo.com/logo.png"></label>
         <button type="submit">Crear negocio</button>
       </form>
     </section>
 
+    <section class="card app-card" id="dashboard-card" hidden>
+      <div class="toolbar">
+        <div>
+          <h2 id="dashboard-title">Dashboard</h2>
+          <div id="business-meta" class="business-meta">Selecciona un negocio.</div>
+        </div>
+        <button id="refresh-customers" class="secondary small" type="button">Actualizar clientes</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><h3>Clientes</h3><div id="stat-customers" class="stat-value">0</div></div>
+        <div class="stat"><h3>Puntos totales</h3><div id="stat-points" class="stat-value">0</div></div>
+        <div class="stat"><h3>Tarjetas Wallet</h3><div id="stat-wallet" class="stat-value">0</div></div>
+      </div>
+
+      <div id="customers-empty" class="empty-state" hidden>
+        Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.
+      </div>
+
+      <div id="customers-table-wrap" class="table-wrap" hidden>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>ID</th>
+              <th>Puntos</th>
+              <th>Estado</th>
+              <th>Actualizado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="customers-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="card app-card" hidden>
       <h2>Crear tarjeta</h2>
+      <p>Registra un cliente nuevo o actualiza un cliente existente con el mismo ID.</p>
       <form id="loyalty-form">
         <div class="row">
-          <label>
-            ID del cliente
-            <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
-          </label>
-          <label>
-            Nombre
-            <input name="name" required maxlength="120" placeholder="Cliente Demo">
-          </label>
+          <label>ID del cliente<input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001"></label>
+          <label>Nombre<input name="name" required maxlength="120" placeholder="Cliente Demo"></label>
         </div>
-
-        <label>
-          Puntos iniciales
-          <input name="points" type="number" min="0" step="1" value="0">
-        </label>
-
+        <label>Puntos iniciales<input name="points" type="number" min="0" step="1" value="0"></label>
         <button id="submit" type="submit">Crear tarjeta</button>
       </form>
     </section>
 
     <section class="card app-card" hidden>
       <h2>Actualizar puntos</h2>
+      <p>Escribe el ID exacto del cliente y el nuevo saldo.</p>
       <form id="points-form">
         <div class="row">
-          <label>
-            ID del cliente
-            <input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
-          </label>
-          <label>
-            Nuevos puntos
-            <input name="points" type="number" min="0" step="1" value="0">
-          </label>
+          <label>ID del cliente<input name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001"></label>
+          <label>Nuevos puntos<input name="points" type="number" min="0" step="1" value="0"></label>
         </div>
-
         <button type="submit">Actualizar puntos</button>
       </form>
     </section>
@@ -213,8 +233,11 @@
     const loginButton = document.getElementById("login-button");
     const registerButton = document.getElementById("register-button");
     const logout = document.getElementById("logout");
+    const refreshDashboard = document.getElementById("refresh-dashboard");
+    const refreshCustomers = document.getElementById("refresh-customers");
     const appCards = [...document.querySelectorAll(".app-card")];
     const tokenKey = "wallet_business_ai_token";
+    const selectedBusinessKey = "wallet_business_ai_selected_business";
 
     const businessSelect = document.getElementById("business-select");
     const businessForm = document.getElementById("business-form");
@@ -224,6 +247,15 @@
     const guideCard = document.getElementById("guide-card");
     const guideStatus = document.getElementById("guide-status");
     const result = document.getElementById("result");
+
+    const dashboardTitle = document.getElementById("dashboard-title");
+    const businessMeta = document.getElementById("business-meta");
+    const statCustomers = document.getElementById("stat-customers");
+    const statPoints = document.getElementById("stat-points");
+    const statWallet = document.getElementById("stat-wallet");
+    const customersEmpty = document.getElementById("customers-empty");
+    const customersTableWrap = document.getElementById("customers-table-wrap");
+    const customersBody = document.getElementById("customers-body");
 
     function selectedBusinessId() {
       return businessSelect.value;
@@ -236,39 +268,15 @@
     function setAuthenticated(value) {
       authCard.hidden = value;
       logout.hidden = !value;
+      refreshDashboard.hidden = !value;
       for (const card of appCards) card.hidden = !value;
       guideCard.hidden = !value;
       syncGuidance();
     }
 
-    function syncGuidance() {
-      if (!token()) {
-        guideStatus.textContent = "Paso 1: inicia sesión o crea una cuenta para comenzar.";
-        return;
-      }
-
-      const hasBusiness = Boolean(selectedBusinessId());
-
-      if (!hasBusiness) {
-        guideStatus.innerHTML = "Paso 1: <strong>crea tu primer negocio</strong> usando el formulario “Crear negocio”. Después selecciónalo en el selector.";
-        submitButton.disabled = true;
-        loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
-        pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
-        return;
-      }
-
-      loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
-      pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
-      submitButton.disabled = false;
-
-      guideStatus.innerHTML = "Paso 2: <strong>crea una tarjeta</strong>. Al terminar, aparecerá el enlace para añadirla a Google Wallet. Luego podrás pasar al paso 4 para actualizar sus puntos.";
-    }
-
     function authHeaders(extra = {}) {
       const current = token();
-      return current
-        ? { ...extra, Authorization: `Bearer ${current}` }
-        : extra;
+      return current ? { ...extra, Authorization: "Bearer " + current } : extra;
     }
 
     async function apiFetch(path, options = {}) {
@@ -279,12 +287,10 @@
           ...(options.headers || {})
         })
       });
-
       if (response.status === 401) {
         localStorage.removeItem(tokenKey);
         setAuthenticated(false);
       }
-
       return response;
     }
 
@@ -293,15 +299,42 @@
       result.textContent = message;
     }
 
+    function formatNumber(value) {
+      return new Intl.NumberFormat("es-CO").format(Number(value || 0));
+    }
+
+    function formatDate(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("es-CO");
+    }
+
+    function syncGuidance() {
+      if (!token()) {
+        guideStatus.textContent = "Paso 1: inicia sesión o crea una cuenta para comenzar.";
+        return;
+      }
+
+      if (!selectedBusinessId()) {
+        guideStatus.innerHTML = "Paso 1: <strong>crea tu primer negocio</strong> y después selecciónalo en el selector.";
+        loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
+        pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
+        return;
+      }
+
+      loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
+      pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
+      guideStatus.innerHTML = "Paso 2: <strong>crea una tarjeta</strong>. Después podrás verla en el dashboard, añadirla a Google Wallet y actualizar sus puntos.";
+    }
+
     async function loadBusinesses() {
       const response = await apiFetch("/businesses");
       const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudieron cargar los negocios.");
 
-      if (!response.ok) {
-        throw new Error(body.error || "No se pudieron cargar los negocios.");
-      }
-
+      const previous = localStorage.getItem(selectedBusinessKey);
       businessSelect.innerHTML = "";
+
       for (const business of body.data) {
         const option = document.createElement("option");
         option.value = business.id;
@@ -314,15 +347,122 @@
         option.value = "";
         option.textContent = "Primero crea un negocio";
         businessSelect.appendChild(option);
+      } else if (body.data.some((business) => business.id === previous)) {
+        businessSelect.value = previous;
       }
 
       syncGuidance();
+      await loadDashboard();
+    }
+
+    async function loadDashboard() {
+      if (!selectedBusinessId()) {
+        dashboardTitle.textContent = "Dashboard";
+        businessMeta.textContent = "Crea un negocio para comenzar.";
+        statCustomers.textContent = "0";
+        statPoints.textContent = "0";
+        statWallet.textContent = "0";
+        customersEmpty.hidden = false;
+        customersTableWrap.hidden = true;
+        customersBody.innerHTML = "";
+        return;
+      }
+
+      const response = await apiFetch("/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo cargar el dashboard.");
+
+      const selected = body.data.business;
+      const stats = body.data.stats;
+      const customers = body.data.customers;
+
+      dashboardTitle.textContent = selected.name;
+      businessMeta.textContent = selected.programName + " · " + customers.length + " cliente(s)";
+      statCustomers.textContent = formatNumber(stats.totalCustomers);
+      statPoints.textContent = formatNumber(stats.totalPoints);
+      statWallet.textContent = formatNumber(customers.filter((customer) => Boolean(customer.walletObjectId)).length);
+
+      customersBody.innerHTML = "";
+
+      if (!customers.length) {
+        customersEmpty.hidden = false;
+        customersTableWrap.hidden = true;
+        guideStatus.innerHTML = "Paso 2: <strong>crea la primera tarjeta</strong> para que el cliente aparezca aquí.";
+      } else {
+        customersEmpty.hidden = true;
+        customersTableWrap.hidden = false;
+
+        for (const customer of customers) {
+          const row = document.createElement("tr");
+
+          const nameCell = document.createElement("td");
+          nameCell.textContent = customer.name;
+
+          const idCell = document.createElement("td");
+          idCell.textContent = customer.id;
+
+          const pointsCell = document.createElement("td");
+          pointsCell.textContent = formatNumber(customer.points);
+
+          const statusCell = document.createElement("td");
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.textContent = customer.walletObjectId ? "Wallet activa" : "Sin Wallet";
+          statusCell.appendChild(pill);
+
+          const updatedCell = document.createElement("td");
+          updatedCell.textContent = formatDate(customer.updatedAt);
+
+          const actionsCell = document.createElement("td");
+          const actions = document.createElement("div");
+          actions.className = "actions";
+
+          const pointsButton = document.createElement("button");
+          pointsButton.type = "button";
+          pointsButton.className = "secondary small";
+          pointsButton.textContent = "Puntos";
+          pointsButton.addEventListener("click", () => {
+            pointsForm.elements.id.value = customer.id;
+            pointsForm.elements.points.value = customer.points;
+            pointsForm.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+
+          const walletButton = document.createElement("button");
+          walletButton.type = "button";
+          walletButton.className = "small";
+          walletButton.textContent = "Google Wallet";
+          walletButton.addEventListener("click", () => openWallet(customer.id));
+
+          actions.append(pointsButton, walletButton);
+          actionsCell.appendChild(actions);
+
+          row.append(nameCell, idCell, pointsCell, statusCell, updatedCell, actionsCell);
+          customersBody.appendChild(row);
+        }
+
+        guideStatus.innerHTML = "Paso 4: <strong>administra tus clientes desde el dashboard</strong>. Puedes abrir su tarjeta Wallet o editar sus puntos.";
+      }
+    }
+
+    async function openWallet(customerId) {
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/loyalty/" + encodeURIComponent(customerId)
+        );
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "No se pudo generar el enlace de Google Wallet.");
+        window.open(body.addToWalletUrl, "_blank", "noopener");
+        showResult("Enlace de Google Wallet abierto para " + customerId + ".");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      }
     }
 
     authForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       loginButton.disabled = true;
       const data = Object.fromEntries(new FormData(authForm));
+
       try {
         const response = await fetch(API + "/auth/login", {
           method: "POST",
@@ -365,16 +505,25 @@
 
     logout.addEventListener("click", () => {
       localStorage.removeItem(tokenKey);
+      localStorage.removeItem(selectedBusinessKey);
       setAuthenticated(false);
       businessSelect.innerHTML = "";
       showResult("Sesión cerrada.");
     });
 
+    refreshDashboard.addEventListener("click", () => {
+      loadBusinesses().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo actualizar."));
+    });
+
+    refreshCustomers.addEventListener("click", () => {
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar los clientes."));
+    });
+
     businessSelect.addEventListener("change", () => {
+      localStorage.setItem(selectedBusinessKey, selectedBusinessId());
       syncGuidance();
-      if (selectedBusinessId()) {
-        showResult("Negocio seleccionado. Ahora puedes crear una tarjeta para un cliente.");
-      }
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar el negocio."));
+      if (selectedBusinessId()) showResult("Negocio seleccionado. Dashboard actualizado.");
     });
 
     businessForm.addEventListener("submit", async (event) => {
@@ -389,15 +538,15 @@
         });
         const body = await response.json();
 
-        if (!response.ok) {
-          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear el negocio.");
-        }
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear el negocio.");
 
         await loadBusinesses();
         businessSelect.value = body.data.business.id;
+        localStorage.setItem(selectedBusinessKey, body.data.business.id);
         businessForm.reset();
         syncGuidance();
-        showResult("Negocio creado y Loyalty Class preparada. Ahora ve a “Crear tarjeta” y registra al cliente.");
+        await loadDashboard();
+        showResult("Negocio creado y Loyalty Class preparada. Ahora registra tu primer cliente.");
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       }
@@ -417,19 +566,16 @@
 
       try {
         const response = await apiFetch(
-          `/businesses/${encodeURIComponent(selectedBusinessId())}/loyalty`,
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/loyalty",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
           }
         );
-
         const body = await response.json();
 
-        if (!response.ok) {
-          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear la tarjeta.");
-        }
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear la tarjeta.");
 
         result.innerHTML = "";
         const status = document.createElement("div");
@@ -443,7 +589,9 @@
         link.textContent = "Añadir a Google Wallet";
 
         result.append(status, link);
-        guideStatus.innerHTML = "Paso 3: <strong>añade la tarjeta a Google Wallet</strong> con el enlace de arriba. Después, cuando el cliente gane o use puntos, utiliza “Actualizar puntos”.";
+        loyaltyForm.reset();
+        await loadDashboard();
+        guideStatus.innerHTML = "Paso 3: <strong>añade la tarjeta a Google Wallet</strong> con el enlace de arriba. El cliente también aparecerá en el dashboard.";
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       } finally {
@@ -464,22 +612,20 @@
 
       try {
         const response = await apiFetch(
-          `/businesses/${encodeURIComponent(selectedBusinessId())}/loyalty/${encodeURIComponent(data.id)}/points`,
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/loyalty/" + encodeURIComponent(data.id) + "/points",
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ points: data.points })
           }
         );
-
         const body = await response.json();
 
-        if (!response.ok) {
-          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
-        }
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
 
-        showResult("Puntos actualizados correctamente.");
-        guideStatus.innerHTML = "Flujo completado: <strong>tarjeta creada y puntos actualizados</strong>. Repite el paso 4 cada vez que cambie el saldo del cliente.";
+        await loadDashboard();
+        showResult("Puntos actualizados correctamente para " + data.id + ".");
+        guideStatus.innerHTML = "Paso 4: <strong>puntos actualizados</strong>. El nuevo saldo ya aparece en el dashboard.";
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       }
