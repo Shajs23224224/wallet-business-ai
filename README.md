@@ -188,6 +188,31 @@ Parámetros:
 
 La respuesta incluye `pagination` con total de resultados, total de páginas y flags para navegación anterior/siguiente. PostgreSQL aplica `LIMIT/OFFSET` y existen índices específicos para las consultas habituales del dashboard.
 
+## Fase 6 — Gestión de negocios y logos
+
+La gestión de negocios permite editar nombre, programa y branding desde el dashboard. El logo puede venir de una URL HTTPS o de un archivo JPG, PNG o WebP de hasta 5 MB.
+
+### Logo por archivo
+
+El formulario usa `multipart/form-data` y el backend guarda la imagen en `public/uploads/logos/`, una ruta excluida de Git. Para que Google Wallet pueda descargar un logo subido, el despliegue debe exponer esos archivos mediante una URL pública HTTPS.
+
+Configura:
+
+```env
+PUBLIC_BASE_URL=https://tu-dominio-publico.example.com
+```
+
+En producción, el almacenamiento local de archivos debe montarse sobre un volumen persistente o reemplazarse por almacenamiento de objetos/CDN.
+
+La edición del negocio usa:
+
+```text
+PATCH /api/v1/businesses/:businessId
+Authorization: Bearer <TOKEN>
+```
+
+Puede recibir `name`, `programName`, `logoUrl` o un archivo multipart llamado `logo`. Después de guardar los cambios, la Loyalty Class se sincroniza con Google Wallet.
+
 ## Siguiente fase
 
 1. Panel web para negocios.
