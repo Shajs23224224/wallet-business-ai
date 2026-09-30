@@ -208,6 +208,30 @@
     </section>
 
     <section class="card app-card" hidden>
+      <h2>Editar cliente</h2>
+      <p>Modifica nombre, puntos y estado. El ID del cliente no se cambia porque forma parte del identificador de su tarjeta Wallet.</p>
+      <form id="edit-customer-form">
+        <div class="row">
+          <label>ID del cliente<input name="id" readonly></label>
+          <label>Nombre<input name="name" required maxlength="120"></label>
+        </div>
+        <div class="row">
+          <label>Puntos<input name="points" type="number" min="0" step="1" required></label>
+          <label>Estado
+            <select name="status" required>
+              <option value="ACTIVE">Activa</option>
+              <option value="INACTIVE">Inactiva</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button id="save-edit-button" type="submit">Guardar cambios</button>
+          <button id="cancel-edit-button" class="secondary" type="button">Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card app-card" hidden>
       <h2>Actualizar puntos</h2>
       <p>Escribe el ID exacto del cliente y el nuevo saldo.</p>
       <form id="points-form">
@@ -242,6 +266,9 @@
     const businessSelect = document.getElementById("business-select");
     const businessForm = document.getElementById("business-form");
     const loyaltyForm = document.getElementById("loyalty-form");
+    const editCustomerForm = document.getElementById("edit-customer-form");
+    const saveEditButton = document.getElementById("save-edit-button");
+    const cancelEditButton = document.getElementById("cancel-edit-button");
     const pointsForm = document.getElementById("points-form");
     const submitButton = document.getElementById("submit");
     const guideCard = document.getElementById("guide-card");
@@ -307,6 +334,20 @@
       if (!value) return "—";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("es-CO");
+    }
+
+    function startCustomerEdit(customer) {
+      editCustomerForm.elements.id.value = customer.id;
+      editCustomerForm.elements.name.value = customer.name;
+      editCustomerForm.elements.points.value = customer.points;
+      editCustomerForm.elements.status.value = customer.status || "ACTIVE";
+      editCustomerForm.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function clearCustomerEdit() {
+      editCustomerForm.reset();
+      editCustomerForm.elements.id.value = "";
+      editCustomerForm.elements.status.value = "ACTIVE";
     }
 
     function syncGuidance() {
@@ -407,7 +448,7 @@
           const statusCell = document.createElement("td");
           const pill = document.createElement("span");
           pill.className = "pill";
-          pill.textContent = customer.walletObjectId ? "Wallet activa" : "Sin Wallet";
+          pill.textContent = customer.status === "INACTIVE" ? "Cliente inactivo" : (customer.walletObjectId ? "Wallet activa" : "Sin Wallet");
           statusCell.appendChild(pill);
 
           const updatedCell = document.createElement("td");
@@ -427,13 +468,19 @@
             pointsForm.scrollIntoView({ behavior: "smooth", block: "center" });
           });
 
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "small";
+          editButton.textContent = "Editar";
+          editButton.addEventListener("click", () => startCustomerEdit(customer));
+
           const walletButton = document.createElement("button");
           walletButton.type = "button";
           walletButton.className = "small";
           walletButton.textContent = "Google Wallet";
           walletButton.addEventListener("click", () => openWallet(customer.id));
 
-          actions.append(pointsButton, walletButton);
+          actions.append(editButton, pointsButton, walletButton);
           actionsCell.appendChild(actions);
 
           row.append(nameCell, idCell, pointsCell, statusCell, updatedCell, actionsCell);
@@ -608,6 +655,53 @@
       } finally {
         submitButton.disabled = false;
       }
+    });
+
+    editCustomerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId() || !editCustomerForm.elements.id.value) {
+        showResult("Selecciona un negocio y un cliente antes de editar.");
+        return;
+      }
+
+      saveEditButton.disabled = true;
+      const data = Object.fromEntries(new FormData(editCustomerForm));
+      data.points = Number(data.points || 0);
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers/" + encodeURIComponent(data.id),
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: data.name,
+              points: data.points,
+              status: data.status
+            })
+          }
+        );
+
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo actualizar el cliente.");
+        }
+
+        await loadDashboard();
+        clearCustomerEdit();
+        showResult("Cliente actualizado correctamente y tarjeta Wallet sincronizada.");
+        guideStatus.innerHTML = "Edición completada: <strong>nombre, puntos y estado sincronizados</strong>.";
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        saveEditButton.disabled = false;
+      }
+    });
+
+    cancelEditButton.addEventListener("click", () => {
+      clearCustomerEdit();
+      showResult("Edición cancelada.");
     });
 
     pointsForm.addEventListener("submit", async (event) => {
