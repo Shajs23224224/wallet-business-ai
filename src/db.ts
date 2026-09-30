@@ -28,6 +28,24 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   return getPool().query<T>(text, values);
 }
 
+export async function withTransaction<T>(
+  callback: (client: pg.PoolClient) => Promise<T>
+) {
+  const client = await getPool().connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await callback(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closeDatabase() {
   if (pool) {
     await pool.end();
