@@ -173,6 +173,20 @@
         <div class="stat"><h3>Tarjetas Wallet</h3><div id="stat-wallet" class="stat-value">0</div></div>
       </div>
 
+      <div class="row" style="margin-top:16px;">
+        <label>Buscar cliente
+          <input id="customer-search" type="search" maxlength="120" placeholder="Nombre o ID del cliente">
+        </label>
+        <label>Estado
+          <select id="customer-status-filter">
+            <option value="ALL">Todos</option>
+            <option value="ACTIVE">Activos</option>
+            <option value="INACTIVE">Inactivos</option>
+          </select>
+        </label>
+      </div>
+      <p id="customer-filter-summary" class="muted">Mostrando todos los clientes.</p>
+
       <div id="customers-empty" class="empty-state" hidden>
         Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.
       </div>
@@ -283,6 +297,9 @@
     const customersEmpty = document.getElementById("customers-empty");
     const customersTableWrap = document.getElementById("customers-table-wrap");
     const customersBody = document.getElementById("customers-body");
+    const customerSearch = document.getElementById("customer-search");
+    const customerStatusFilter = document.getElementById("customer-status-filter");
+    const customerFilterSummary = document.getElementById("customer-filter-summary");
 
     function selectedBusinessId() {
       return businessSelect.value;
@@ -406,10 +423,20 @@
         customersEmpty.hidden = false;
         customersTableWrap.hidden = true;
         customersBody.innerHTML = "";
+        customerFilterSummary.textContent = "Selecciona un negocio para buscar clientes.";
         return;
       }
 
-      const response = await apiFetch("/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers");
+      const params = new URLSearchParams();
+      const search = customerSearch.value.trim();
+      const statusFilter = customerStatusFilter.value;
+      if (search) params.set("q", search);
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+
+      const queryString = params.toString();
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers" + (queryString ? "?" + queryString : "")
+      );
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo cargar el dashboard.");
 
@@ -422,6 +449,7 @@
       statCustomers.textContent = formatNumber(stats.totalCustomers);
       statPoints.textContent = formatNumber(stats.totalPoints);
       statWallet.textContent = formatNumber(customers.filter((customer) => Boolean(customer.walletObjectId)).length);
+      customerFilterSummary.textContent = "Mostrando " + formatNumber(body.data.filteredCount) + " de " + formatNumber(stats.totalCustomers) + " cliente(s).";
 
       customersBody.innerHTML = "";
 
@@ -575,6 +603,19 @@
 
     refreshCustomers.addEventListener("click", () => {
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar los clientes."));
+    });
+
+    let searchTimer = null;
+    function scheduleCustomerSearch() {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo filtrar la lista."));
+      }, 250);
+    }
+
+    customerSearch.addEventListener("input", scheduleCustomerSearch);
+    customerStatusFilter.addEventListener("change", () => {
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo filtrar la lista."));
     });
 
     businessSelect.addEventListener("change", () => {
