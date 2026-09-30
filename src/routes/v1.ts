@@ -294,6 +294,7 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
 });
 
 
+router.patch("/businesses/:businessId/customers/:customerId", async (req, res) => {
   const parsed = customerEditSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
