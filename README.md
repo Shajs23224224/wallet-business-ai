@@ -243,7 +243,7 @@ La persistencia se encuentra en:
 
 La migración correspondiente es `004_offers.sql`.
 
-Google documenta que `OfferClass` define el contenido compartido de una oferta y `OfferObject` representa la instancia individual; también documenta los canales `INSTORE`, `ONLINE` y `BOTH`. citeturn621950search0turn621950search1
+Google Wallet usa `OfferClass` para definir el contenido compartido de una oferta y `OfferObject` para la instancia individual.
 
 ## Siguiente fase
 
