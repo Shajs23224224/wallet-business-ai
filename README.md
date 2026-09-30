@@ -322,9 +322,35 @@ El escáner utiliza la API nativa `BarcodeDetector` para evitar una dependencia 
 
 Los cupones emitidos antes de la Fase 10 pueden conservar el QR anterior. Para ellos se debe utilizar una vez la acción **Sincronizar** de la campaña desde el dashboard para actualizar sus Offer Objects con el nuevo QR único.
 
+## Fase 11 — Analítica de clientes y campañas
+
+Wallet Business AI incorpora analítica derivada de las operaciones reales del negocio, sin duplicar eventos en una tabla paralela.
+
+Endpoint:
+
+```text
+GET /api/v1/businesses/:businessId/analytics?days=7|30|90
+Authorization: Bearer <TOKEN>
+```
+
+El dashboard muestra:
+
+- clientes totales y clientes activos disponibles para la operación;
+- campañas totales y campañas activas;
+- cupones emitidos;
+- cupones redimidos;
+- tasa de redención;
+- clientes que han redimido al menos un cupón;
+- clientes recurrentes con dos o más redenciones;
+- rendimiento individual de cada campaña;
+- clientes con mayor actividad de cupones;
+- actividad diaria de emisión y redención para 7, 30 o 90 días.
+
+La analítica utiliza `customers`, `offers`, `offer_objects` y `offer_redemptions` como fuente de verdad. No añade una migración porque todas las métricas pueden derivarse de los datos transaccionales existentes.
+
 ## Siguiente fase
 
-1. Analítica avanzada de clientes y campañas.
-2. Automatización con Gemini para crear campañas.
-3. Autenticación reforzada, planes y suscripciones.
+1. Automatización con Gemini para crear y administrar campañas.
+2. Autenticación reforzada, roles y seguridad operativa.
+3. Planes, suscripciones y límites SaaS.
 4. Despliegue de producción y observabilidad.
