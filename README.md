@@ -117,6 +117,23 @@ El panel web permite:
 
 El enlace de Google Wallet se genera bajo demanda en el servidor y la clave privada nunca llega al navegador.
 
+
+### Editar un cliente
+
+```text
+PATCH /api/v1/businesses/:businessId/customers/:customerId
+Authorization: Bearer <TOKEN>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{"name":"Cliente actualizado","points":300,"status":"ACTIVE"}
+```
+
+El endpoint sincroniza nombre, puntos y estado con PostgreSQL y con el objeto existente de Google Wallet. El `customerId` no se cambia porque identifica de forma estable el objeto de Wallet.
+
 ## Siguiente fase
 
 1. Panel web para negocios.
