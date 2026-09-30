@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { z } from "zod";
 
+const optionalNonEmptyString = (schema: z.ZodTypeAny) =>
+  z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    schema
+  );
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   GOOGLE_WALLET_ISSUER_ID: z.string().min(1),
@@ -14,7 +20,7 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   JWT_SECRET: z.string().min(32).optional(),
   PUBLIC_BASE_URL: z.string().url().optional(),
-  GEMINI_API_KEY: z.string().min(20).optional(),
+  GEMINI_API_KEY: optionalNonEmptyString(z.string().min(20).optional()),
   GEMINI_MODEL: z.string().min(1).default("gemini-3.8-flash")
 });
 
