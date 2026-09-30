@@ -146,7 +146,7 @@ export async function ensureOfferObject(
 
   try {
     const existing = await walletobjects.offerobject.get({ resourceId: object.id });
-    const updatedObject: Record<string, unknown> = { ...existing.data, ...object };
+    const updatedObject = { ...existing.data, ...object };
 
     if (object.validTimeInterval) updatedObject.validTimeInterval = object.validTimeInterval;
     else delete updatedObject.validTimeInterval;
@@ -179,7 +179,7 @@ export async function syncOfferObject(
 ) {
   const object = buildOfferObject(business, offer, customer);
   const existing = await walletobjects.offerobject.get({ resourceId: object.id });
-  const updatedObject: Record<string, unknown> = { ...existing.data, ...object };
+  const updatedObject = { ...existing.data, ...object };
 
   if (object.validTimeInterval) updatedObject.validTimeInterval = object.validTimeInterval;
   else delete updatedObject.validTimeInterval;
@@ -189,6 +189,16 @@ export async function syncOfferObject(
     requestBody: updatedObject
   });
   return updated.data;
+}
+
+export async function completeOfferObject(
+  walletObjectId: string
+) {
+  const result = await walletobjects.offerobject.patch({
+    resourceId: walletObjectId,
+    requestBody: { state: "COMPLETED" }
+  });
+  return result.data;
 }
 
 export function createOfferAddToWalletUrl(
