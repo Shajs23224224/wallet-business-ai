@@ -710,7 +710,7 @@ router.post("/businesses/:businessId/offer-scans/redeem", async (req, res) => {
     customerName: string;
     walletObjectId: string;
   }>(
-    \`SELECT o.id::text as "offerId",
+    `SELECT o.id::text as "offerId",
             o.title as "offerTitle",
             o.code as "offerCode",
             o.state as "offerState",
@@ -724,7 +724,7 @@ router.post("/businesses/:businessId/offer-scans/redeem", async (req, res) => {
        JOIN offers o ON o.id = oo.offer_id
        JOIN customers c ON c.id = oo.customer_id
       WHERE oo.wallet_object_id = $1
-        AND o.business_id = $2\`,
+        AND o.business_id = $2`,
     [parsed.data.value, business.id]
   );
 
@@ -767,10 +767,10 @@ router.post("/businesses/:businessId/offer-scans/redeem", async (req, res) => {
       const walletResult = await completeOfferObject(scannedOffer.walletObjectId);
 
       const inserted = await client.query(
-        \`INSERT INTO offer_redemptions
+        `INSERT INTO offer_redemptions
           (id, offer_id, customer_id, wallet_object_id, redeemed_at, notes)
          VALUES ($1,$2,$3,$4,NOW(),$5)
-         RETURNING id::text, redeemed_at as "redeemedAt", notes\`,
+         RETURNING id::text, redeemed_at as "redeemedAt", notes`,
         [
           randomUUID(),
           scannedOffer.offerId,
