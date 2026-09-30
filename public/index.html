@@ -42,6 +42,35 @@
     .wallet-link { display: inline-block; margin-top: 12px; font-weight: 700; }
     .muted { font-size: 13px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .guide {
+      border: 1px solid #cfe1ff;
+      background: #f6f9ff;
+    }
+    .guide-title { margin-bottom: 6px; }
+    .guide-step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 12px 0;
+      border-top: 1px solid #e4eaf3;
+    }
+    .guide-step:first-of-type { border-top: 0; }
+    .guide-number {
+      width: 34px; height: 34px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: #172033; color: #fff; font-weight: 800;
+    }
+    .guide-step strong { display: block; margin-bottom: 3px; }
+    .guide-step span { color: #667085; line-height: 1.45; }
+    .status-message {
+      margin-top: 14px; padding: 12px 14px; border-radius: 10px;
+      background: #eef7ee; color: #245b2a; font-weight: 600;
+    }
+    .empty-state {
+      margin-top: 12px; padding: 12px 14px; border-radius: 10px;
+      background: #fff7e6; color: #7a4d00;
+    }
     @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -63,6 +92,40 @@
           <button id="register-button" type="button">Crear cuenta</button>
         </div>
       </form>
+    </section>
+
+    <section class="card guide" id="guide-card" hidden>
+      <h2 class="guide-title">Cómo usar Wallet Business AI</h2>
+      <p>Sigue estos pasos en orden. El sistema te irá indicando qué hacer según tu estado.</p>
+      <div class="guide-step">
+        <div class="guide-number">1</div>
+        <div>
+          <strong>Selecciona o crea tu negocio</strong>
+          <span>Primero necesitas un negocio. Aquí se configura su programa de fidelización de Google Wallet.</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-number">2</div>
+        <div>
+          <strong>Crea la tarjeta del cliente</strong>
+          <span>Cuando tengas un negocio seleccionado, podrás crear una tarjeta con el nombre, ID y puntos iniciales.</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-number">3</div>
+        <div>
+          <strong>Añade la tarjeta a Google Wallet</strong>
+          <span>Después de crearla aparecerá el botón “Añadir a Google Wallet”. Envía ese enlace al cliente o ábrelo tú.</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-number">4</div>
+        <div>
+          <strong>Actualiza los puntos</strong>
+          <span>Cuando el cliente acumule o use puntos, selecciona el negocio, escribe su ID y establece el nuevo saldo.</span>
+        </div>
+      </div>
+      <div id="guide-status" class="status-message">Inicia sesión para comenzar.</div>
     </section>
 
     <section class="card app-card" hidden>
@@ -158,6 +221,8 @@
     const loyaltyForm = document.getElementById("loyalty-form");
     const pointsForm = document.getElementById("points-form");
     const submitButton = document.getElementById("submit");
+    const guideCard = document.getElementById("guide-card");
+    const guideStatus = document.getElementById("guide-status");
     const result = document.getElementById("result");
 
     function selectedBusinessId() {
@@ -172,6 +237,31 @@
       authCard.hidden = value;
       logout.hidden = !value;
       for (const card of appCards) card.hidden = !value;
+      guideCard.hidden = !value;
+      syncGuidance();
+    }
+
+    function syncGuidance() {
+      if (!token()) {
+        guideStatus.textContent = "Paso 1: inicia sesión o crea una cuenta para comenzar.";
+        return;
+      }
+
+      const hasBusiness = Boolean(selectedBusinessId());
+
+      if (!hasBusiness) {
+        guideStatus.innerHTML = "Paso 1: <strong>crea tu primer negocio</strong> usando el formulario “Crear negocio”. Después selecciónalo en el selector.";
+        submitButton.disabled = true;
+        loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
+        pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = true);
+        return;
+      }
+
+      loyaltyForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
+      pointsForm.querySelectorAll("input, button").forEach((element) => element.disabled = false);
+      submitButton.disabled = false;
+
+      guideStatus.innerHTML = "Paso 2: <strong>crea una tarjeta</strong>. Al terminar, aparecerá el enlace para añadirla a Google Wallet. Luego podrás pasar al paso 4 para actualizar sus puntos.";
     }
 
     function authHeaders(extra = {}) {
@@ -218,6 +308,15 @@
         option.textContent = business.name;
         businessSelect.appendChild(option);
       }
+
+      if (!body.data.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "Primero crea un negocio";
+        businessSelect.appendChild(option);
+      }
+
+      syncGuidance();
     }
 
     authForm.addEventListener("submit", async (event) => {
@@ -271,6 +370,13 @@
       showResult("Sesión cerrada.");
     });
 
+    businessSelect.addEventListener("change", () => {
+      syncGuidance();
+      if (selectedBusinessId()) {
+        showResult("Negocio seleccionado. Ahora puedes crear una tarjeta para un cliente.");
+      }
+    });
+
     businessForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(businessForm));
@@ -290,7 +396,8 @@
         await loadBusinesses();
         businessSelect.value = body.data.business.id;
         businessForm.reset();
-        showResult("Negocio creado y Loyalty Class preparada.");
+        syncGuidance();
+        showResult("Negocio creado y Loyalty Class preparada. Ahora ve a “Crear tarjeta” y registra al cliente.");
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       }
@@ -336,6 +443,7 @@
         link.textContent = "Añadir a Google Wallet";
 
         result.append(status, link);
+        guideStatus.innerHTML = "Paso 3: <strong>añade la tarjeta a Google Wallet</strong> con el enlace de arriba. Después, cuando el cliente gane o use puntos, utiliza “Actualizar puntos”.";
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       } finally {
@@ -371,6 +479,7 @@
         }
 
         showResult("Puntos actualizados correctamente.");
+        guideStatus.innerHTML = "Flujo completado: <strong>tarjeta creada y puntos actualizados</strong>. Repite el paso 4 cada vez que cambie el saldo del cliente.";
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       }
