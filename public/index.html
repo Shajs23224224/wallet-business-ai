@@ -194,6 +194,70 @@
       </form>
     </section>
 
+    <section class="card app-card" id="offers-card" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Cupones y ofertas</h2>
+          <p>Crea campañas y emite cupones individuales en Google Wallet.</p>
+        </div>
+        <button id="refresh-offers" class="secondary small" type="button">Actualizar ofertas</button>
+      </div>
+
+      <form id="offer-form">
+        <div class="row">
+          <label>Título del cupón<input name="title" required maxlength="60" placeholder="20% de descuento"></label>
+          <label>Código<input name="code" required maxlength="64" pattern="[A-Za-z0-9_-]+" placeholder="DESC20"></label>
+        </div>
+        <label>Descripción<input name="details" required maxlength="500" placeholder="20% de descuento en tu próxima compra."></label>
+        <label>Condiciones<input name="finePrint" maxlength="1000" placeholder="Válido una vez por cliente."></label>
+        <div class="row">
+          <label>Canal de redención
+            <select name="redemptionChannel">
+              <option value="INSTORE">En tienda</option>
+              <option value="ONLINE">Online</option>
+              <option value="BOTH">Tienda y online</option>
+            </select>
+          </label>
+          <label>Inicio<input name="startsAt" type="datetime-local"></label>
+        </div>
+        <div class="row">
+          <label>Finalización<input name="endsAt" type="datetime-local"></label>
+          <div></div>
+        </div>
+        <button id="create-offer-button" type="submit">Crear campaña</button>
+      </form>
+
+      <div id="offers-empty" class="empty-state" hidden>No hay campañas de cupones todavía.</div>
+      <div id="offers-table-wrap" class="table-wrap" hidden>
+        <table>
+          <thead>
+            <tr>
+              <th>Oferta</th>
+              <th>Código</th>
+              <th>Canal</th>
+              <th>Estado</th>
+              <th>Emitidos</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="offers-body"></tbody>
+        </table>
+      </div>
+
+      <form id="issue-offer-form">
+        <h3>Emitir cupón a un cliente</h3>
+        <div class="row">
+          <label>Campaña
+            <select name="offerId" id="issue-offer-select" required></select>
+          </label>
+          <label>ID del cliente
+            <input name="customerId" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
+          </label>
+        </div>
+        <button id="issue-offer-button" type="submit">Emitir cupón</button>
+      </form>
+    </section>
+
     <section class="card app-card" id="dashboard-card" hidden>
       <div class="toolbar">
         <div>
@@ -343,6 +407,7 @@
     const logout = document.getElementById("logout");
     const refreshDashboard = document.getElementById("refresh-dashboard");
     const refreshCustomers = document.getElementById("refresh-customers");
+    const refreshOffers = document.getElementById("refresh-offers");
     const appCards = [...document.querySelectorAll(".app-card")];
     const tokenKey = "wallet_business_ai_token";
     const selectedBusinessKey = "wallet_business_ai_selected_business";
@@ -365,6 +430,14 @@
     const guideCard = document.getElementById("guide-card");
     const guideStatus = document.getElementById("guide-status");
     const result = document.getElementById("result");
+    const offerForm = document.getElementById("offer-form");
+    const createOfferButton = document.getElementById("create-offer-button");
+    const offersEmpty = document.getElementById("offers-empty");
+    const offersTableWrap = document.getElementById("offers-table-wrap");
+    const offersBody = document.getElementById("offers-body");
+    const issueOfferForm = document.getElementById("issue-offer-form");
+    const issueOfferSelect = document.getElementById("issue-offer-select");
+    const issueOfferButton = document.getElementById("issue-offer-button");
 
     const dashboardTitle = document.getElementById("dashboard-title");
     const businessMeta = document.getElementById("business-meta");
@@ -565,6 +638,94 @@
       syncGuidance();
       syncBusinessEditor();
       await loadDashboard();
+    }
+
+    function formatOfferChannel(value) {
+      if (value === "INSTORE") return "En tienda";
+      if (value === "ONLINE") return "Online";
+      return "Tienda y online";
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("es-CO");
+    }
+
+    async function loadOffers() {
+      if (!selectedBusinessId()) {
+        offersBody.innerHTML = "";
+        offersEmpty.hidden = false;
+        offersTableWrap.hidden = true;
+        issueOfferSelect.innerHTML = "";
+        return;
+      }
+
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers"
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudieron cargar las ofertas.");
+
+      offersBody.innerHTML = "";
+      issueOfferSelect.innerHTML = "";
+
+      for (const offer of body.data) {
+        const option = document.createElement("option");
+        option.value = offer.id;
+        option.textContent = offer.title + " · " + offer.code;
+        issueOfferSelect.appendChild(option);
+
+        const row = document.createElement("tr");
+
+        const titleCell = document.createElement("td");
+        titleCell.innerHTML = "";
+        const title = document.createElement("strong");
+        title.textContent = offer.title;
+        titleCell.append(title);
+        if (offer.endsAt) {
+          const meta = document.createElement("div");
+          meta.className = "muted";
+          meta.textContent = "Hasta " + formatDateTime(offer.endsAt);
+          titleCell.append(meta);
+        }
+
+        const codeCell = document.createElement("td");
+        codeCell.textContent = offer.code;
+
+        const channelCell = document.createElement("td");
+        channelCell.textContent = formatOfferChannel(offer.redemptionChannel);
+
+        const stateCell = document.createElement("td");
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = offer.state === "ACTIVE" ? "Activa" : "Inactiva";
+        stateCell.appendChild(pill);
+
+        const issuedCell = document.createElement("td");
+        issuedCell.textContent = formatNumber(offer.issuedCount);
+
+        const actionCell = document.createElement("td");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "small";
+        button.textContent = "Emitir";
+        button.disabled = offer.state !== "ACTIVE";
+        button.addEventListener("click", () => {
+          issueOfferSelect.value = offer.id;
+          issueOfferForm.scrollIntoView({ behavior: "smooth", block: "center" });
+          issueOfferForm.elements.customerId.focus();
+        });
+        actionCell.appendChild(button);
+
+        row.append(titleCell, codeCell, channelCell, stateCell, issuedCell, actionCell);
+        offersBody.appendChild(row);
+      }
+
+      const hasOffers = body.data.length > 0;
+      offersEmpty.hidden = hasOffers;
+      offersTableWrap.hidden = !hasOffers;
+      issueOfferButton.disabled = !hasOffers;
     }
 
     async function loadDashboard() {
@@ -780,6 +941,98 @@
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar los clientes."));
     });
 
+    refreshOffers.addEventListener("click", () => {
+      loadOffers().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar las ofertas."));
+    });
+
+    offerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Primero selecciona o crea un negocio.");
+        return;
+      }
+
+      createOfferButton.disabled = true;
+      const raw = Object.fromEntries(new FormData(offerForm));
+      const data = {
+        title: String(raw.title || ""),
+        details: String(raw.details || ""),
+        finePrint: String(raw.finePrint || "").trim() || undefined,
+        redemptionChannel: String(raw.redemptionChannel || "INSTORE"),
+        code: String(raw.code || "").trim(),
+        startsAt: String(raw.startsAt || "").trim()
+          ? new Date(String(raw.startsAt)).toISOString()
+          : undefined,
+        endsAt: String(raw.endsAt || "").trim()
+          ? new Date(String(raw.endsAt)).toISOString()
+          : undefined
+      };
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers",
+          {
+            method: "POST",
+            body: JSON.stringify(data)
+          }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear la campaña.");
+
+        offerForm.reset();
+        await loadOffers();
+        showResult("Campaña creada. Google Wallet ya tiene su Offer Class.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        createOfferButton.disabled = false;
+      }
+    });
+
+    issueOfferForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Primero selecciona un negocio.");
+        return;
+      }
+
+      issueOfferButton.disabled = true;
+      const data = Object.fromEntries(new FormData(issueOfferForm));
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) +
+          "/offers/" + encodeURIComponent(data.offerId) +
+          "/customers/" + encodeURIComponent(data.customerId),
+          { method: "POST" }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo emitir el cupón.");
+
+        result.innerHTML = "";
+        const status = document.createElement("div");
+        status.textContent = "Cupón emitido correctamente para " + data.customerId + ".";
+
+        const link = document.createElement("a");
+        link.className = "wallet-link";
+        link.href = body.addToWalletUrl;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Añadir cupón a Google Wallet";
+
+        result.append(status, link);
+        issueOfferForm.elements.customerId.value = "";
+        await loadOffers();
+        showResult("Cupón emitido. Usa el enlace generado para guardarlo en Google Wallet.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        issueOfferButton.disabled = false;
+      }
+    });
+
     let searchTimer = null;
     function resetCustomerPage() {
       customerPage = 1;
@@ -869,6 +1122,7 @@
       syncGuidance();
       syncBusinessEditor();
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar el negocio."));
+      loadOffers().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron cargar las ofertas."));
       if (selectedBusinessId()) showResult("Negocio seleccionado. Dashboard actualizado.");
     });
 
