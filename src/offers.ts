@@ -118,7 +118,8 @@ export function buildOfferObject(
     })(),
     barcode: {
       type: "QR_CODE",
-      value: offer.code
+      value: objectId,
+      alternateText: offer.code
     },
     ...(buildValidity(offer) ? { validTimeInterval: buildValidity(offer) } : {}),
     textModulesData: [
