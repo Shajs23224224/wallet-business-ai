@@ -267,7 +267,7 @@ router.get("/businesses/:businessId/offers", async (req, res) => {
   });
 });
 
-router.post("/businesses/:businessId/offers", async (req, res) => {}
+router.post("/businesses/:businessId/offers", async (req, res) => {
   const parsed = offerCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
