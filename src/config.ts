@@ -13,7 +13,9 @@ const envSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   JWT_SECRET: z.string().min(32).optional(),
-  PUBLIC_BASE_URL: z.string().url().optional()
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  GEMINI_API_KEY: z.string().min(20).optional(),
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.8-flash")
 });
 
 export const env = envSchema.parse({
@@ -26,5 +28,7 @@ export const env = envSchema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
   DATABASE_SSL: process.env.DATABASE_SSL,
   JWT_SECRET: process.env.JWT_SECRET,
-  PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL
+  PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GEMINI_MODEL: process.env.GEMINI_MODEL
 });
