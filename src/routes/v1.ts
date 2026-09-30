@@ -178,6 +178,19 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
     return;
   }
 
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const status = typeof req.query.status === "string" ? req.query.status : "ALL";
+
+  if (q.length > 120) {
+    res.status(400).json({ ok: false, error: "Search query is too long" });
+    return;
+  }
+
+  if (!["ALL", "ACTIVE", "INACTIVE"].includes(status)) {
+    res.status(400).json({ ok: false, error: "Invalid customer status filter" });
+    return;
+  }
+
   const result = await query<{
     id: string;
     name: string;
@@ -187,8 +200,15 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
     createdAt: string;
     updatedAt: string;
   }>(
-    "SELECT external_id as id, name, points, status, wallet_object_id as \"walletObjectId\", created_at as \"createdAt\", updated_at as \"updatedAt\" FROM customers WHERE business_id = $1 ORDER BY updated_at DESC",
-    [business.id]
+    `SELECT external_id as id, name, points, status,
+            wallet_object_id as "walletObjectId",
+            created_at as "createdAt", updated_at as "updatedAt"
+       FROM customers
+      WHERE business_id = $1
+        AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR external_id ILIKE '%' || $2 || '%')
+        AND ($3 = 'ALL' OR status = $3)
+      ORDER BY updated_at DESC`,
+    [business.id, q, status]
   );
 
   const totals = await query<{ totalCustomers: number; totalPoints: number }>(
@@ -201,6 +221,8 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
     data: {
       business,
       stats: totals.rows[0] ?? { totalCustomers: 0, totalPoints: 0 },
+      filteredCount: result.rows.length,
+      filters: { q, status },
       customers: result.rows
     }
   });
