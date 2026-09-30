@@ -854,6 +854,7 @@
 
     cancelBusinessEdit.addEventListener("click", () => {
       editBusinessForm.hidden = true;
+      businessForm.hidden = false;
       syncBusinessEditor();
       showResult("Edición del negocio cancelada.");
     });
