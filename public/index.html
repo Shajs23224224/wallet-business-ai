@@ -227,6 +227,39 @@
         <button id="create-offer-button" type="submit">Crear campaña</button>
       </form>
 
+      <form id="edit-offer-form" hidden>
+        <h3>Editar campaña</h3>
+        <div class="row">
+          <label>Título del cupón<input name="title" required maxlength="60"></label>
+          <label>Código<input name="code" required maxlength="64" pattern="[A-Za-z0-9_-]+"></label>
+        </div>
+        <label>Descripción<input name="details" required maxlength="500"></label>
+        <label>Condiciones<input name="finePrint" maxlength="1000"></label>
+        <div class="row">
+          <label>Canal de redención
+            <select name="redemptionChannel">
+              <option value="INSTORE">En tienda</option>
+              <option value="ONLINE">Online</option>
+              <option value="BOTH">Tienda y online</option>
+            </select>
+          </label>
+          <label>Estado
+            <select name="state">
+              <option value="ACTIVE">Activa</option>
+              <option value="INACTIVE">Inactiva</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>Inicio<input name="startsAt" type="datetime-local"></label>
+          <label>Finalización<input name="endsAt" type="datetime-local"></label>
+        </div>
+        <div class="row">
+          <button id="save-offer-button" type="submit">Guardar cambios</button>
+          <button id="cancel-offer-button" class="secondary" type="button">Cancelar</button>
+        </div>
+      </form>
+
       <div id="offers-empty" class="empty-state" hidden>No hay campañas de cupones todavía.</div>
       <div id="offers-table-wrap" class="table-wrap" hidden>
         <table>
@@ -432,6 +465,9 @@
     const result = document.getElementById("result");
     const offerForm = document.getElementById("offer-form");
     const createOfferButton = document.getElementById("create-offer-button");
+    const editOfferForm = document.getElementById("edit-offer-form");
+    const saveOfferButton = document.getElementById("save-offer-button");
+    const cancelOfferButton = document.getElementById("cancel-offer-button");
     const offersEmpty = document.getElementById("offers-empty");
     const offersTableWrap = document.getElementById("offers-table-wrap");
     const offersBody = document.getElementById("offers-body");
@@ -460,6 +496,7 @@
 
     let customerPage = 1;
     let businessCache = [];
+    let offerCache = [];
     let customerPageSizeValue = 25;
     let customerSortValue = "updatedAt";
     let customerOrderValue = "desc";
@@ -652,12 +689,72 @@
       return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("es-CO");
     }
 
+    function offerLifecycleLabel(state) {
+      if (state === "SCHEDULED") return "Programada";
+      if (state === "EXPIRED") return "Expirada";
+      if (state === "INACTIVE") return "Inactiva";
+      return "Activa";
+    }
+
+    function toDateTimeLocal(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 16);
+    }
+
+    function startOfferEdit(offer) {
+      editOfferForm.hidden = false;
+      editOfferForm.dataset.offerId = offer.id;
+      editOfferForm.elements.title.value = offer.title;
+      editOfferForm.elements.code.value = offer.code;
+      editOfferForm.elements.details.value = offer.details;
+      editOfferForm.elements.finePrint.value = offer.finePrint || "";
+      editOfferForm.elements.redemptionChannel.value = offer.redemptionChannel;
+      editOfferForm.elements.state.value = offer.state;
+      editOfferForm.elements.startsAt.value = toDateTimeLocal(offer.startsAt);
+      editOfferForm.elements.endsAt.value = toDateTimeLocal(offer.endsAt);
+      editOfferForm.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    async function toggleOffer(offer) {
+      const nextState = offer.state === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers/" +
+        encodeURIComponent(offer.id),
+        {
+          method: "PATCH",
+          body: JSON.stringify({ state: nextState })
+        }
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudo cambiar el estado de la campaña.");
+      await loadOffers();
+      showResult(nextState === "ACTIVE" ? "Campaña activada y sincronizada." : "Campaña pausada y sincronizada.");
+    }
+
+    async function syncOffer(offer) {
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers/" +
+        encodeURIComponent(offer.id) + "/sync",
+        { method: "POST" }
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudo sincronizar la campaña.");
+      await loadOffers();
+      showResult("Campaña sincronizada con Google Wallet. Objetos actualizados: " + formatNumber(body.data.syncedObjects) + ".");
+    }
+
     async function loadOffers() {
       if (!selectedBusinessId()) {
+        offerCache = [];
         offersBody.innerHTML = "";
         offersEmpty.hidden = false;
         offersTableWrap.hidden = true;
         issueOfferSelect.innerHTML = "";
+        issueOfferButton.disabled = true;
+        editOfferForm.hidden = true;
         return;
       }
 
@@ -667,19 +764,23 @@
       const body = await readApiResponse(response);
       if (!response.ok) throw new Error(body.error || "No se pudieron cargar las ofertas.");
 
+      offerCache = body.data;
       offersBody.innerHTML = "";
       issueOfferSelect.innerHTML = "";
 
-      for (const offer of body.data) {
+      const issuableOffers = offerCache.filter((offer) => offer.lifecycleState === "ACTIVE");
+
+      for (const offer of issuableOffers) {
         const option = document.createElement("option");
         option.value = offer.id;
         option.textContent = offer.title + " · " + offer.code;
         issueOfferSelect.appendChild(option);
+      }
 
+      for (const offer of offerCache) {
         const row = document.createElement("tr");
 
         const titleCell = document.createElement("td");
-        titleCell.innerHTML = "";
         const title = document.createElement("strong");
         title.textContent = offer.title;
         titleCell.append(title);
@@ -699,33 +800,81 @@
         const stateCell = document.createElement("td");
         const pill = document.createElement("span");
         pill.className = "pill";
-        pill.textContent = offer.state === "ACTIVE" ? "Activa" : "Inactiva";
+        pill.textContent = offerLifecycleLabel(offer.lifecycleState);
         stateCell.appendChild(pill);
 
         const issuedCell = document.createElement("td");
         issuedCell.textContent = formatNumber(offer.issuedCount);
 
         const actionCell = document.createElement("td");
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "small";
-        button.textContent = "Emitir";
-        button.disabled = offer.state !== "ACTIVE";
-        button.addEventListener("click", () => {
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const issueButton = document.createElement("button");
+        issueButton.type = "button";
+        issueButton.className = "small";
+        issueButton.textContent = "Emitir";
+        issueButton.disabled = offer.lifecycleState !== "ACTIVE";
+        issueButton.addEventListener("click", () => {
           issueOfferSelect.value = offer.id;
           issueOfferForm.scrollIntoView({ behavior: "smooth", block: "center" });
           issueOfferForm.elements.customerId.focus();
         });
-        actionCell.appendChild(button);
 
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "secondary small";
+        editButton.textContent = "Editar";
+        editButton.addEventListener("click", () => startOfferEdit(offer));
+
+        const syncButton = document.createElement("button");
+        syncButton.type = "button";
+        syncButton.className = "secondary small";
+        syncButton.textContent = "Sincronizar";
+        syncButton.addEventListener("click", () => {
+          syncButton.disabled = true;
+          syncOffer(offer)
+            .catch((error) => showResult(error instanceof Error ? error.message : "No se pudo sincronizar."))
+            .finally(() => { syncButton.disabled = false; });
+        });
+
+        actions.append(issueButton, editButton, syncButton);
+
+        if (offer.lifecycleState === "ACTIVE" || offer.lifecycleState === "SCHEDULED") {
+          const toggleButton = document.createElement("button");
+          toggleButton.type = "button";
+          toggleButton.className = "small";
+          toggleButton.textContent = "Pausar";
+          toggleButton.addEventListener("click", () => {
+            toggleButton.disabled = true;
+            toggleOffer(offer)
+              .catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cambiar el estado."))
+              .finally(() => { toggleButton.disabled = false; });
+          });
+          actions.appendChild(toggleButton);
+        } else if (offer.lifecycleState === "INACTIVE") {
+          const activateButton = document.createElement("button");
+          activateButton.type = "button";
+          activateButton.className = "small";
+          activateButton.textContent = "Activar";
+          activateButton.addEventListener("click", () => {
+            activateButton.disabled = true;
+            toggleOffer(offer)
+              .catch((error) => showResult(error instanceof Error ? error.message : "No se pudo activar la campaña."))
+              .finally(() => { activateButton.disabled = false; });
+          });
+          actions.appendChild(activateButton);
+        }
+
+        actionCell.appendChild(actions);
         row.append(titleCell, codeCell, channelCell, stateCell, issuedCell, actionCell);
         offersBody.appendChild(row);
       }
 
-      const hasOffers = body.data.length > 0;
+      const hasOffers = offerCache.length > 0;
       offersEmpty.hidden = hasOffers;
       offersTableWrap.hidden = !hasOffers;
-      issueOfferButton.disabled = !hasOffers;
+      issueOfferButton.disabled = issuableOffers.length === 0;
     }
 
     async function loadDashboard() {
@@ -987,6 +1136,58 @@
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       } finally {
         createOfferButton.disabled = false;
+      }
+    });
+
+    cancelOfferButton.addEventListener("click", () => {
+      editOfferForm.hidden = true;
+      editOfferForm.reset();
+      delete editOfferForm.dataset.offerId;
+    });
+
+    editOfferForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const offerId = editOfferForm.dataset.offerId;
+      if (!offerId || !selectedBusinessId()) return;
+
+      saveOfferButton.disabled = true;
+      const raw = Object.fromEntries(new FormData(editOfferForm));
+      const data = {
+        title: String(raw.title || ""),
+        code: String(raw.code || "").trim(),
+        details: String(raw.details || ""),
+        finePrint: String(raw.finePrint || "").trim() || null,
+        redemptionChannel: String(raw.redemptionChannel || "INSTORE"),
+        state: String(raw.state || "ACTIVE"),
+        startsAt: String(raw.startsAt || "").trim()
+          ? new Date(String(raw.startsAt)).toISOString()
+          : null,
+        endsAt: String(raw.endsAt || "").trim()
+          ? new Date(String(raw.endsAt)).toISOString()
+          : null
+      };
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers/" + encodeURIComponent(offerId),
+          {
+            method: "PATCH",
+            body: JSON.stringify(data)
+          }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error || "No se pudo actualizar la campaña.");
+
+        editOfferForm.hidden = true;
+        editOfferForm.reset();
+        delete editOfferForm.dataset.offerId;
+        await loadOffers();
+        showResult("Campaña actualizada y sincronizada con Google Wallet.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        saveOfferButton.disabled = false;
       }
     });
 
