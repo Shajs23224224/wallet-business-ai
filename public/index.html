@@ -409,12 +409,14 @@
     }
 
     async function apiFetch(path, options = {}) {
+      const isFormData = options.body instanceof FormData;
+      const baseHeaders = isFormData
+        ? { ...(options.headers || {}) }
+        : { "Content-Type": "application/json", ...(options.headers || {}) };
+
       const response = await fetch(API + path, {
         ...options,
-        headers: authHeaders({
-          "Content-Type": "application/json",
-          ...(options.headers || {})
-        })
+        headers: authHeaders(baseHeaders)
       });
       if (response.status === 401) {
         localStorage.removeItem(tokenKey);
