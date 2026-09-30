@@ -17,6 +17,7 @@ export type LoyaltyCustomer = {
   id: string;
   name: string;
   points?: number;
+  status?: "ACTIVE" | "INACTIVE";
 };
 
 function getObjectId(business: Business, customerId: string) {
@@ -64,7 +65,7 @@ export function buildLoyaltyObject(
   return {
     id: objectId,
     classId: business.classId,
-    state: "ACTIVE",
+    state: customer.status ?? "ACTIVE",
     accountId: customer.id,
     accountName: customer.name,
     barcode: {
