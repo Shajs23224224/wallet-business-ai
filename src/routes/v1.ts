@@ -326,7 +326,7 @@ router.get("/businesses/:businessId/loyalty/:customerId", async (req, res) => {
 
   try {
     const data = await getLoyaltyObject(business, req.params.customerId);
-    const customer = await query<{ external_id: string; name: string; points: number }>(
+    const customer = await query<{ external_id: string; name: string; points: number; status: "ACTIVE" | "INACTIVE" }>(
       "SELECT external_id, name, points, status FROM customers WHERE business_id = $1 AND external_id = $2",
       [business.id, req.params.customerId]
     );
