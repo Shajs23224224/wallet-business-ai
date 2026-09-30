@@ -86,6 +86,10 @@
     .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .pagination { margin-top: 16px; }
     .pagination button { min-width: 110px; }
+    .scanner { margin-top: 16px; padding: 14px; border: 1px solid #e4e8ee; border-radius: 14px; background: #fafbfc; }
+    .scanner video { display: block; width: 100%; max-height: 360px; object-fit: cover; border-radius: 12px; background: #111827; }
+    .scanner-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .scanner-status { margin-top: 10px; }
     @media (max-width: 780px) {
       .row, .stats { grid-template-columns: 1fr; }
       main { width: min(100% - 20px, 1080px); margin-top: 18px; }
@@ -290,6 +294,17 @@
           </thead>
           <tbody id="offers-body"></tbody>
         </table>
+      </div>
+
+      <div class="scanner">
+        <h3>Escáner QR</h3>
+        <p class="muted">Escanea el QR del cupón desde la tarjeta de Google Wallet. Cada cupón emitido tiene un identificador único.</p>
+        <video id="offer-scanner-video" playsinline muted hidden></video>
+        <div class="scanner-actions">
+          <button id="start-offer-scanner" type="button">Abrir cámara</button>
+          <button id="stop-offer-scanner" class="secondary" type="button" hidden>Detener</button>
+        </div>
+        <div id="offer-scanner-status" class="scanner-status muted">El escáner requiere un navegador compatible y HTTPS/localhost.</div>
       </div>
 
       <form id="redeem-offer-form" hidden>
@@ -508,6 +523,10 @@
     const issueOfferSelect = document.getElementById("issue-offer-select");
     const issueOfferButton = document.getElementById("issue-offer-button");
     const redeemOfferForm = document.getElementById("redeem-offer-form");
+    const scannerVideo = document.getElementById("offer-scanner-video");
+    const startOfferScanner = document.getElementById("start-offer-scanner");
+    const stopOfferScanner = document.getElementById("stop-offer-scanner");
+    const offerScannerStatus = document.getElementById("offer-scanner-status");
     const redeemOfferSelect = document.getElementById("redeem-offer-select");
     const redeemOfferButton = document.getElementById("redeem-offer-button");
     const redemptionsCard = document.getElementById("redemptions-card");
@@ -539,6 +558,8 @@
     let businessCache = [];
     let offerCache = [];
     let redemptionCache = [];
+    let scannerStream = null;
+    let scannerRunning = false;
     let customerPageSizeValue = 25;
     let customerSortValue = "updatedAt";
     let customerOrderValue = "desc";
@@ -790,6 +811,7 @@
 
     async function loadOffers() {
       if (!selectedBusinessId()) {
+        stopOfferScanner();
         offerCache = [];
         redemptionCache = [];
         offersBody.innerHTML = "";
@@ -1324,6 +1346,119 @@
         redeemOfferButton.disabled = false;
       }
     });
+
+    function setScannerStatus(message) {
+      offerScannerStatus.textContent = message;
+    }
+
+    function stopOfferScanner() {
+      scannerRunning = false;
+      if (scannerStream) {
+        scannerStream.getTracks().forEach((track) => track.stop());
+        scannerStream = null;
+      }
+      scannerVideo.pause();
+      scannerVideo.srcObject = null;
+      scannerVideo.hidden = true;
+      stopOfferScanner.hidden = true;
+      startOfferScanner.hidden = false;
+    }
+
+    async function redeemScannedOffer(rawValue) {
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offer-scans/redeem",
+        {
+          method: "POST",
+          body: JSON.stringify({ value: rawValue })
+        }
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudo redimir el cupón escaneado.");
+
+      stopOfferScanner();
+      await loadOffers();
+      showResult(
+        "Cupón redimido correctamente.\n" +
+        "Cliente: " + body.data.customer.name + " (" + body.data.customer.id + ")\n" +
+        "Oferta: " + body.data.offer.title
+      );
+      guideStatus.innerHTML = "Redención por QR: <strong>cupón completado y registrado</strong>.";
+    }
+
+    async function startOfferScanner() {
+      if (scannerRunning) return;
+
+      if (!selectedBusinessId()) {
+        showResult("Selecciona un negocio antes de abrir el escáner.");
+        return;
+      }
+
+      if (!("BarcodeDetector" in globalThis)) {
+        setScannerStatus("Este navegador no incluye BarcodeDetector. Usa el formulario manual de redención.");
+        return;
+      }
+
+      try {
+        const formats = await BarcodeDetector.getSupportedFormats();
+        if (!formats.includes("qr_code")) {
+          setScannerStatus("Este navegador no puede detectar QR. Usa el formulario manual de redención.");
+          return;
+        }
+
+        scannerStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+
+        scannerVideo.srcObject = scannerStream;
+        scannerVideo.hidden = false;
+        stopOfferScanner.hidden = false;
+        startOfferScanner.hidden = true;
+        scannerRunning = true;
+        setScannerStatus("Apunta la cámara al QR del cupón.");
+        await scannerVideo.play();
+
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+        const scanLoop = async () => {
+          if (!scannerRunning) return;
+
+          try {
+            const results = await detector.detect(scannerVideo);
+            if (results.length > 0 && results[0].rawValue) {
+              scannerRunning = false;
+              setScannerStatus("QR detectado. Validando cupón…");
+              try {
+                await redeemScannedOffer(results[0].rawValue);
+              } catch (error) {
+                stopOfferScanner();
+                setScannerStatus("QR detectado, pero la redención fue rechazada.");
+                showResult(error instanceof Error ? error.message : "No se pudo redimir el cupón.");
+              }
+              return;
+            }
+          } catch (error) {
+            console.error("Offer QR scanner error:", error);
+          }
+
+          window.requestAnimationFrame(scanLoop);
+        };
+
+        window.requestAnimationFrame(scanLoop);
+      } catch (error) {
+        stopOfferScanner();
+        setScannerStatus("No se pudo abrir la cámara. Revisa los permisos del navegador.");
+        showResult(error instanceof Error ? error.message : "No se pudo abrir la cámara.");
+      }
+    }
+
+    startOfferScanner.addEventListener("click", () => {
+      startOfferScanner().catch((error) => {
+        stopOfferScanner();
+        showResult(error instanceof Error ? error.message : "No se pudo iniciar el escáner.");
+      });
+    });
+
+    stopOfferScanner.addEventListener("click", stopOfferScanner);
 
     refreshRedemptions.addEventListener("click", () => {
       loadRedemptions().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar las redenciones."));
