@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import v1Router from "./routes/v1.js";
 import { z } from "zod";
 import { env } from "./config.js";
@@ -403,7 +403,7 @@ app.patch("/api/wallet/loyalty/:id/points", async (req, res) => {
   }
 });
 
-app.use("/api", (error: unknown, _req, res, next) => {
+app.use("/api", (error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) {
     next(error);
     return;
