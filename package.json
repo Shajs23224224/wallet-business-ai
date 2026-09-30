@@ -19,7 +19,8 @@
     "dotenv": "^18.0.4",
     "pg": "^8.23.0",
     "bcryptjs": "^3.0.3",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "@google/genai": "^2.24.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
