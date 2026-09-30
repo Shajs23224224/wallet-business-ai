@@ -194,7 +194,6 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
     res.status(502).json({ ok: false, error: "Unable to create business loyalty program", google: api });
   }
 });
-);
 
 router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) => {
   const parsed = businessEditSchema.safeParse(req.body);
