@@ -9,16 +9,28 @@ import { logoUpload, publicUploadUrl } from "../uploads.js";
 import type { Business } from "../store.js";
 
 const router = Router();
+
+const optionalTrimmedText = (max: number) =>
+  z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().trim().min(2).max(max).optional()
+  );
+
+const optionalHttpsUrl = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().url().startsWith("https://").optional()
+);
+
 const businessSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  programName: z.string().trim().min(2).max(120).optional(),
-  logoUrl: z.string().url().startsWith("https://").optional()
+  programName: optionalTrimmedText(120),
+  logoUrl: optionalHttpsUrl
 });
 
 const businessEditSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
-  programName: z.string().trim().min(2).max(120).optional(),
-  logoUrl: z.string().url().startsWith("https://").optional()
+  programName: optionalTrimmedText(120),
+  logoUrl: optionalHttpsUrl
 }).refine((value) => Object.keys(value).length > 0, {
   message: "At least one business field must be provided"
 });
