@@ -96,6 +96,23 @@
     .analytics-stat .value { margin-top: 5px; font-size: 24px; font-weight: 800; }
     .analytics-bar { height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; min-width: 120px; }
     .analytics-bar > span { display: block; height: 100%; background: #172033; }
+    textarea {
+      width: 100%; min-height: 120px; resize: vertical;
+      border: 1px solid #cfd6df; border-radius: 10px;
+      padding: 12px 13px; font: inherit; background: #fff;
+    }
+    .ai-preview {
+      margin-top: 16px; padding: 16px; border: 1px solid #e4e8ee;
+      border-radius: 14px; background: #fafbfc;
+    }
+    .ai-preview-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px;
+    }
+    .ai-preview-item {
+      padding: 12px; border-radius: 10px; background: #fff;
+      border: 1px solid #e4e8ee;
+    }
+    .ai-preview-item strong { display: block; margin-bottom: 5px; font-size: 12px; color: #667085; text-transform: uppercase; }
     @media (max-width: 780px) {
       .row, .stats { grid-template-columns: 1fr; }
       main { width: min(100% - 20px, 1080px); margin-top: 18px; }
@@ -345,6 +362,38 @@
       </form>
     </section>
 
+    <section class="card app-card" id="ai-offer-card" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Asistente de campañas con Gemini</h2>
+          <p>Describe la promoción en lenguaje natural. Gemini prepara el borrador; la creación final usa las validaciones normales del servidor.</p>
+        </div>
+        <span class="pill">IA</span>
+      </div>
+
+      <form id="ai-offer-form">
+        <label>¿Qué campaña quieres crear?
+          <textarea id="ai-offer-prompt" name="prompt" required minlength="10" maxlength="1200" placeholder="Ej.: Crea un cupón del 20% para clientes nuevos, válido durante 7 días, para redimir en tienda."></textarea>
+        </label>
+        <div class="row">
+          <button id="generate-ai-offer" type="submit">Generar borrador</button>
+          <button id="create-ai-offer" class="secondary" type="button" disabled>Crear campaña con este borrador</button>
+        </div>
+      </form>
+
+      <div id="ai-offer-preview" class="ai-preview" hidden>
+        <h3>Borrador generado</h3>
+        <div class="ai-preview-grid">
+          <div class="ai-preview-item"><strong>Título</strong><span id="ai-preview-title"></span></div>
+          <div class="ai-preview-item"><strong>Código</strong><span id="ai-preview-code"></span></div>
+          <div class="ai-preview-item"><strong>Canal</strong><span id="ai-preview-channel"></span></div>
+          <div class="ai-preview-item"><strong>Vigencia</strong><span id="ai-preview-dates"></span></div>
+        </div>
+        <div class="ai-preview-item" style="margin-top:12px;"><strong>Descripción</strong><span id="ai-preview-details"></span></div>
+        <div class="ai-preview-item" style="margin-top:12px;"><strong>Condiciones</strong><span id="ai-preview-fine-print"></span></div>
+      </div>
+    </section>
+
     <section class="card app-card" id="analytics-card" hidden>
       <div class="toolbar">
         <div>
@@ -558,6 +607,17 @@
     const analyticsCustomersWrap = document.getElementById("analytics-customers-wrap");
     const analyticsCustomersBody = document.getElementById("analytics-customers-body");
     const analyticsActivityBody = document.getElementById("analytics-activity-body");
+    const aiOfferForm = document.getElementById("ai-offer-form");
+    const aiOfferPrompt = document.getElementById("ai-offer-prompt");
+    const generateAiOfferButton = document.getElementById("generate-ai-offer");
+    const createAiOfferButton = document.getElementById("create-ai-offer");
+    const aiOfferPreview = document.getElementById("ai-offer-preview");
+    const aiPreviewTitle = document.getElementById("ai-preview-title");
+    const aiPreviewCode = document.getElementById("ai-preview-code");
+    const aiPreviewChannel = document.getElementById("ai-preview-channel");
+    const aiPreviewDates = document.getElementById("ai-preview-dates");
+    const aiPreviewDetails = document.getElementById("ai-preview-details");
+    const aiPreviewFinePrint = document.getElementById("ai-preview-fine-print");
     const appCards = [...document.querySelectorAll(".app-card")];
     const tokenKey = "wallet_business_ai_token";
     const selectedBusinessKey = "wallet_business_ai_selected_business";
@@ -630,6 +690,7 @@
     let scannerStream = null;
     let scannerRunning = false;
     let customerPageSizeValue = 25;
+    let aiOfferDraft = null;
     let customerSortValue = "updatedAt";
     let customerOrderValue = "desc";
 
@@ -808,6 +869,28 @@
       syncBusinessEditor();
       await loadDashboard();
       await loadAnalytics();
+    }
+
+    function resetAiOfferDraft() {
+      aiOfferDraft = null;
+      aiOfferPreview.hidden = true;
+      createAiOfferButton.disabled = true;
+      aiOfferForm.reset();
+    }
+
+    function renderAiOfferDraft(draft) {
+      aiOfferDraft = draft;
+      aiPreviewTitle.textContent = draft.title;
+      aiPreviewCode.textContent = draft.code;
+      aiPreviewChannel.textContent = formatOfferChannel(draft.redemptionChannel);
+      aiPreviewDates.textContent =
+        (draft.startsAt ? formatDateTime(draft.startsAt) : "Sin inicio") +
+        " → " +
+        (draft.endsAt ? formatDateTime(draft.endsAt) : "Sin finalización");
+      aiPreviewDetails.textContent = draft.details;
+      aiPreviewFinePrint.textContent = draft.finePrint || "Sin condiciones adicionales.";
+      aiOfferPreview.hidden = false;
+      createAiOfferButton.disabled = false;
     }
 
     function formatOfferChannel(value) {
@@ -1372,6 +1455,67 @@
 
     analyticsDays.addEventListener("change", () => {
       loadAnalytics().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cambiar el periodo."));
+    });
+
+    businessSelect.addEventListener("change", () => {
+      resetAiOfferDraft();
+    });
+
+    aiOfferForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!selectedBusinessId()) {
+        showResult("Primero selecciona o crea un negocio.");
+        return;
+      }
+
+      generateAiOfferButton.disabled = true;
+      createAiOfferButton.disabled = true;
+
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/ai/offers/preview",
+          {
+            method: "POST",
+            body: JSON.stringify({ prompt: aiOfferPrompt.value.trim() })
+          }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error || "No se pudo generar el borrador con Gemini.");
+
+        renderAiOfferDraft(body.data.draft);
+        showResult("Borrador generado con Gemini. Revísalo antes de crear la campaña.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "No se pudo generar el borrador.");
+        createAiOfferButton.disabled = true;
+      } finally {
+        generateAiOfferButton.disabled = false;
+      }
+    });
+
+    createAiOfferButton.addEventListener("click", async () => {
+      if (!aiOfferDraft || !selectedBusinessId()) return;
+
+      createAiOfferButton.disabled = true;
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offers",
+          {
+            method: "POST",
+            body: JSON.stringify(aiOfferDraft)
+          }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear la campaña.");
+
+        resetAiOfferDraft();
+        await loadOffers();
+        await loadAnalytics();
+        showResult("Campaña creada desde el borrador de Gemini. Google Wallet ya tiene su Offer Class.");
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "No se pudo crear la campaña.");
+        createAiOfferButton.disabled = false;
+      }
     });
 
     offerForm.addEventListener("submit", async (event) => {
