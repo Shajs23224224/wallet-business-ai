@@ -12,7 +12,8 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  JWT_SECRET: z.string().min(32).optional()
+  JWT_SECRET: z.string().min(32).optional(),
+  PUBLIC_BASE_URL: z.string().url().optional()
 });
 
 export const env = envSchema.parse({
@@ -24,5 +25,6 @@ export const env = envSchema.parse({
     process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
   DATABASE_URL: process.env.DATABASE_URL,
   DATABASE_SSL: process.env.DATABASE_SSL,
-  JWT_SECRET: process.env.JWT_SECRET
+  JWT_SECRET: process.env.JWT_SECRET,
+  PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL
 });
