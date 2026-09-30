@@ -299,9 +299,32 @@ El dashboard incluye:
 
 La migración correspondiente es `005_offer_redemptions.sql`.
 
+## Fase 10 — Escáner QR para redención
+
+El dashboard incorpora un escáner QR para que el negocio pueda redimir una oferta directamente desde el teléfono.
+
+El flujo es:
+
+1. el `OfferObject` genera un QR único basado en su `wallet_object_id`;
+2. el navegador solicita la cámara trasera;
+3. `BarcodeDetector` detecta el QR;
+4. el backend identifica automáticamente oferta, cliente y objeto Wallet;
+5. se valida el ciclo de vida y que la oferta no haya sido redimida;
+6. el `OfferObject` pasa a `COMPLETED` y la redención queda registrada.
+
+La API incluye:
+
+```text
+POST /api/v1/businesses/:businessId/offer-scans/redeem
+```
+
+El escáner utiliza la API nativa `BarcodeDetector` para evitar una dependencia pesada. Esta API requiere un contexto seguro y su compatibilidad entre navegadores todavía es limitada, por lo que el dashboard mantiene el formulario manual de redención como alternativa. citeturn388412search0turn388412search3
+
+Los cupones emitidos antes de la Fase 10 pueden conservar el QR anterior. Para ellos se debe utilizar una vez la acción **Sincronizar** de la campaña desde el dashboard para actualizar sus Offer Objects con el nuevo QR único.
+
 ## Siguiente fase
 
-1. Escáner de QR/código para redención desde el móvil.
-2. Analítica de clientes y campañas.
-3. Automatización con Gemini para crear campañas.
-4. Autenticación reforzada, planes y suscripciones.
+1. Analítica avanzada de clientes y campañas.
+2. Automatización con Gemini para crear campañas.
+3. Autenticación reforzada, planes y suscripciones.
+4. Despliegue de producción y observabilidad.
