@@ -275,157 +275,33 @@ Desde el dashboard se puede:
 4. ver si está activa, programada, inactiva o expirada;
 5. emitir únicamente campañas actualmente disponibles.
 
+## Fase 9 — Redención y trazabilidad de cupones
+
+Wallet Business AI permite registrar la redención de un cupón por cliente y sincronizar el estado del Offer Object con Google Wallet.
+
+La API autenticada incluye:
+
+```text
+POST /api/v1/businesses/:businessId/offers/:offerId/customers/:customerId/redeem
+GET  /api/v1/businesses/:businessId/offer-redemptions
+```
+
+Para redimir, el backend valida el negocio, la campaña, el estado temporal, el código del cupón y que el cupón haya sido emitido al cliente. Cada combinación oferta/cliente solo puede redimirse una vez.
+
+Al completar una redención, el backend marca el Offer Object como `COMPLETED` en Google Wallet y registra fecha y notas en PostgreSQL. Google documenta `COMPLETED` como uno de los estados de ciclo de vida de un Offer Object junto con `EXPIRED` e `INACTIVE`. citeturn931229search1
+
+El dashboard incluye:
+
+1. formulario de redención;
+2. validación del código;
+3. historial de las últimas 200 redenciones;
+4. contador de emitidos/redimidos por campaña.
+
+La migración correspondiente es `005_offer_redemptions.sql`.
+
 ## Siguiente fase
 
-1. Redención de cupones con registro de uso.
+1. Escáner de QR/código para redención desde el móvil.
 2. Analítica de clientes y campañas.
 3. Automatización con Gemini para crear campañas.
 4. Autenticación reforzada, planes y suscripciones.
-
-
-## Conectar Google Wallet
-
-Para activar la conexión real, configura estos valores como **Secrets/Environment Variables** en el entorno donde se ejecute el backend:
-
-```text
-GOOGLE_WALLET_ISSUER_ID
-GOOGLE_WALLET_CLASS_ID
-GOOGLE_SERVICE_ACCOUNT_EMAIL
-GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-```
-
-No subas el archivo JSON de la cuenta de servicio al repositorio.
-
-### Google Cloud / Google Wallet
-
-Google requiere una cuenta de servicio para autenticar las llamadas REST a Google Wallet. La cuenta de servicio debe estar autorizada para el Issuer en Google Wallet Business Console. La clave privada es información sensible y debe permanecer solamente en el servidor o en el gestor de secretos del despliegue.
-
-El flujo de este proyecto es:
-
-```text
-Cliente
-  ↓
-Panel Wallet Business AI
-  ↓
-/api/wallet/loyalty
-  ↓
-Google Wallet REST API
-  ↓
-Loyalty Class + Loyalty Object
-  ↓
-JWT RS256
-  ↓
-https://pay.google.com/gp/v/save/<JWT>
-  ↓
-Google Wallet del cliente
-```
-
-### Valores de ejemplo
-
-El Class ID debe pertenecer al Issuer, por ejemplo:
-
-```text
-1234567890123456789.WalletBusinessAILoyalty
-```
-
-No copies este valor literalmente: usa tu Issuer ID real.
-
-### Verificación
-
-Después de configurar las credenciales, comprueba:
-
-```bash
-curl http://localhost:3000/health
-curl -X POST http://localhost:3000/api/wallet/loyalty/class
-curl -X POST http://localhost:3000/api/wallet/loyalty \
-  -H "Content-Type: application/json" \
-  -d '{"id":"cliente-001","name":"Cliente Demo","points":100}'
-```
-
-La última respuesta debe incluir `addToWalletUrl`. Al abrir ese enlace con una cuenta de Google autenticada, el usuario puede guardar la tarjeta en Google Wallet.
-
-
-## Fase 3 — PostgreSQL + autenticación
-
-La nueva API autenticada vive bajo `/api/v1`. Las rutas antiguas se mantienen temporalmente para compatibilidad.
-
-### Variables nuevas
-
-```env
-DATABASE_URL=postgresql://USUARIO:CONTRASEÑA@HOST:5432/BASE
-DATABASE_SSL=false
-JWT_SECRET=una-clave-aleatoria-de-al-menos-32-caracteres
-```
-
-Para proveedores administrados que requieren TLS, usa:
-
-```env
-DATABASE_SSL=true
-```
-
-### Migrar la base de datos
-
-Con `DATABASE_URL` configurado:
-
-```bash
-npm install
-npm run db:migrate
-```
-
-La migración crea:
-
-- `users`
-- `businesses`
-- `customers`
-
-Los negocios quedan ligados a su propietario mediante `owner_user_id`. Las consultas de `/api/v1` filtran por ese propietario para evitar acceso cruzado entre empresas.
-
-### Registrar el primer usuario
-
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"CAMBIA_ESTA_CONTRASEÑA"}'
-```
-
-La respuesta contiene un JWT. Úsalo como:
-
-```text
-Authorization: Bearer <TOKEN>
-```
-
-### Iniciar sesión
-
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"CAMBIA_ESTA_CONTRASEÑA"}'
-```
-
-### Consultar negocios del usuario
-
-```bash
-curl http://localhost:3000/api/v1/businesses \
-  -H "Authorization: Bearer <TOKEN>"
-```
-
-### Crear un negocio
-
-```bash
-curl -X POST http://localhost:3000/api/v1/businesses \
-  -H "Authorization: Bearer <TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Mi Negocio","programName":"Club de Clientes","logoUrl":"https://ejemplo.com/logo.png"}'
-```
-
-Cuando se crea el negocio, el backend crea también su Loyalty Class en Google Wallet.
-
-### Seguridad
-
-- Las contraseñas se almacenan con bcrypt.
-- Los JWT se firman con HS256 y `JWT_SECRET`.
-- Las rutas de negocio verifican que el usuario autenticado sea el propietario.
-- La private key de Google Wallet permanece fuera de Git.
-- PostgreSQL sustituye el almacenamiento JSON para la API nueva.
-
-La dependencia `pg` usa el cliente oficial node-postgres y soporta ESM, pooling y PostgreSQL moderno. `bcryptjs` proporciona hashing de contraseñas con soporte TypeScript. citeturn962751search1turn962751search5turn962751search0
