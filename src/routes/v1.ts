@@ -1,16 +1,26 @@
 import { randomUUID } from "node:crypto";
+import { unlink } from "node:fs/promises";
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
 import { authRequired, loginUser, registerUser } from "../auth.js";
-import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints, updateLoyaltyCustomer } from "../wallet.js";
+import { createAddToWalletUrl, ensureLoyaltyClass, ensureLoyaltyObject, getLoyaltyObject, updateLoyaltyPoints, updateLoyaltyCustomer, updateLoyaltyClass } from "../wallet.js";
+import { logoUpload, publicUploadUrl } from "../uploads.js";
 import type { Business } from "../store.js";
 
 const router = Router();
 const businessSchema = z.object({
   name: z.string().trim().min(2).max(120),
   programName: z.string().trim().min(2).max(120).optional(),
-  logoUrl: z.string().url().startsWith("https://")
+  logoUrl: z.string().url().startsWith("https://").optional()
+});
+
+const businessEditSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  programName: z.string().trim().min(2).max(120).optional(),
+  logoUrl: z.string().url().startsWith("https://").optional()
+}).refine((value) => Object.keys(value).length > 0, {
+  message: "At least one business field must be provided"
 });
 const customerSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]+$/).max(64),
@@ -23,6 +33,41 @@ const customerEditSchema = z.object({
   points: z.number().int().nonnegative(),
   status: z.enum(["ACTIVE", "INACTIVE"])
 });
+
+function uploadLogoMiddleware(req: any, res: any, next: any) {
+  logoUpload.single("logo")(req, res, (error: unknown) => {
+    if (error) {
+      res.status(400).json({
+        ok: false,
+        error: error instanceof Error ? error.message : "Unable to upload logo"
+      });
+      return;
+    }
+    next();
+  });
+}
+
+function resolveLogoUrl(req: any, file: Express.Multer.File | undefined, fallback?: string) {
+  const uploaded = file ? publicUploadUrl(req, file.filename) : undefined;
+  const logoUrl = uploaded ?? fallback;
+
+  if (!logoUrl) {
+    return { error: "A logo image or HTTPS logo URL is required" };
+  }
+
+  try {
+    const parsed = new URL(logoUrl);
+    if (parsed.protocol !== "https:") {
+      return {
+        error: "Logo must use HTTPS. For uploaded images, configure PUBLIC_BASE_URL with your public HTTPS domain."
+      };
+    }
+  } catch {
+    return { error: "Invalid logo URL" };
+  }
+
+  return { logoUrl };
+}
 
 function googleApiError(error: unknown) {
   const candidate = error as { code?: number; response?: { data?: { error?: { code?: number; status?: string; message?: string } } } };
@@ -98,10 +143,17 @@ router.get("/businesses", async (_req, res) => {
   res.json({ ok: true, data: result.rows });
 });
 
-router.post("/businesses", async (req, res) => {
+router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
   const parsed = businessSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl);
+  if (logo.error) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    res.status(400).json({ ok: false, error: logo.error });
     return;
   }
 
@@ -110,14 +162,20 @@ router.post("/businesses", async (req, res) => {
   const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID ?? "";
   const classId = issuerId + ".business_" + id.replaceAll("-", "").slice(0, 12);
   if (!issuerId) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
     res.status(500).json({ ok: false, error: "Google Wallet issuer is not configured" });
     return;
   }
 
   const business: Business = {
-    id, ownerUserId: userId, name: parsed.data.name,
+    id,
+    ownerUserId: userId,
+    name: parsed.data.name,
     programName: parsed.data.programName ?? parsed.data.name + " Loyalty",
-    logoUrl: parsed.data.logoUrl, issuerId, classId, createdAt: new Date().toISOString()
+    logoUrl: logo.logoUrl,
+    issuerId,
+    classId,
+    createdAt: new Date().toISOString()
   };
 
   await query(
@@ -130,9 +188,59 @@ router.post("/businesses", async (req, res) => {
     res.status(201).json({ ok: true, data: { business, walletClass: walletClass.data } });
   } catch (error) {
     await query("DELETE FROM businesses WHERE id = $1 AND owner_user_id = $2", [business.id, userId]);
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
     const api = googleApiError(error);
     console.error("Google Wallet business creation error:", api);
     res.status(502).json({ ok: false, error: "Unable to create business loyalty program", google: api });
+  }
+});
+);
+
+router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) => {
+  const parsed = businessEditSchema.safeParse(req.body);
+  if (!parsed.success) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const current = await ownedBusiness(userId, req.params.businessId);
+  if (!current) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl ?? current.logoUrl);
+  if (logo.error) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    res.status(400).json({ ok: false, error: logo.error });
+    return;
+  }
+
+  const updated: Business = {
+    ...current,
+    name: parsed.data.name ?? current.name,
+    programName: parsed.data.programName ?? current.programName,
+    logoUrl: logo.logoUrl,
+    createdAt: current.createdAt ?? new Date().toISOString()
+  };
+
+  try {
+    await updateLoyaltyClass(updated);
+
+    const result = await query<Business>(
+      "UPDATE businesses SET name = $1, program_name = $2, logo_url = $3 WHERE id = $4 AND owner_user_id = $5 RETURNING id::text, owner_user_id::text as \"ownerUserId\", name, program_name as \"programName\", logo_url as \"logoUrl\", issuer_id as \"issuerId\", class_id as \"classId\", created_at as \"createdAt\"",
+      [updated.name, updated.programName, updated.logoUrl, updated.id, userId]
+    );
+
+    res.json({ ok: true, data: result.rows[0] ?? updated });
+  } catch (error) {
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    const api = googleApiError(error);
+    console.error("Google Wallet business update error:", api);
+    res.status(502).json({ ok: false, error: "Unable to update business branding", google: api });
   }
 });
 
