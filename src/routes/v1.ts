@@ -680,6 +680,151 @@ router.post("/businesses/:businessId/offers/:offerId/customers/:customerId/redee
   }
 });
 
+router.post("/businesses/:businessId/offer-scans/redeem", async (req, res) => {
+  const parsed = z.object({
+    value: z.string().trim().min(1).max(300),
+    notes: z.string().trim().max(500).optional()
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    return;
+  }
+
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const scanned = await query<{
+    offerId: string;
+    offerTitle: string;
+    offerCode: string;
+    offerState: OfferRecord["state"];
+    startsAt: string | null;
+    endsAt: string | null;
+    customerRowId: string;
+    customerId: string;
+    customerName: string;
+    walletObjectId: string;
+  }>(
+    \`SELECT o.id::text as "offerId",
+            o.title as "offerTitle",
+            o.code as "offerCode",
+            o.state as "offerState",
+            o.starts_at as "startsAt",
+            o.ends_at as "endsAt",
+            c.id::text as "customerRowId",
+            c.external_id as "customerId",
+            c.name as "customerName",
+            oo.wallet_object_id as "walletObjectId"
+       FROM offer_objects oo
+       JOIN offers o ON o.id = oo.offer_id
+       JOIN customers c ON c.id = oo.customer_id
+      WHERE oo.wallet_object_id = $1
+        AND o.business_id = $2\`,
+    [parsed.data.value, business.id]
+  );
+
+  const scannedOffer = scanned.rows[0];
+  if (!scannedOffer) {
+    res.status(404).json({
+      ok: false,
+      error: "QR no reconocido. Actualiza/sincroniza el cupón antes de escanearlo."
+    });
+    return;
+  }
+
+  const lifecycle = getOfferLifecycleState({
+    state: scannedOffer.offerState,
+    startsAt: scannedOffer.startsAt,
+    endsAt: scannedOffer.endsAt
+  });
+
+  if (lifecycle !== "ACTIVE") {
+    res.status(409).json({
+      ok: false,
+      error: lifecycle === "INACTIVE"
+        ? "La campaña está inactiva."
+        : lifecycle === "SCHEDULED"
+          ? "La campaña todavía no ha comenzado."
+          : "La campaña ya expiró."
+    });
+    return;
+  }
+
+  try {
+    const redemption = await withTransaction(async (client) => {
+      const existing = await client.query(
+        "SELECT id FROM offer_redemptions WHERE offer_id = $1 AND customer_id = $2 FOR UPDATE",
+        [scannedOffer.offerId, scannedOffer.customerRowId]
+      );
+
+      if (existing.rows[0]) throw new Error("OFFER_ALREADY_REDEEMED");
+
+      const walletResult = await completeOfferObject(scannedOffer.walletObjectId);
+
+      const inserted = await client.query(
+        \`INSERT INTO offer_redemptions
+          (id, offer_id, customer_id, wallet_object_id, redeemed_at, notes)
+         VALUES ($1,$2,$3,$4,NOW(),$5)
+         RETURNING id::text, redeemed_at as "redeemedAt", notes\`,
+        [
+          randomUUID(),
+          scannedOffer.offerId,
+          scannedOffer.customerRowId,
+          scannedOffer.walletObjectId,
+          parsed.data.notes ?? null
+        ]
+      );
+
+      return {
+        id: inserted.rows[0].id,
+        redeemedAt: inserted.rows[0].redeemedAt,
+        notes: inserted.rows[0].notes,
+        walletObject: walletResult
+      };
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: {
+        offer: {
+          id: scannedOffer.offerId,
+          title: scannedOffer.offerTitle,
+          code: scannedOffer.offerCode
+        },
+        customer: {
+          id: scannedOffer.customerId,
+          name: scannedOffer.customerName
+        },
+        redemption
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "OFFER_ALREADY_REDEEMED") {
+      res.status(409).json({ ok: false, error: "Este cupón ya fue redimido por este cliente." });
+      return;
+    }
+
+    const candidate = error as { code?: string };
+    if (candidate.code === "23505") {
+      res.status(409).json({ ok: false, error: "Este cupón ya fue redimido por este cliente." });
+      return;
+    }
+
+    const api = googleApiError(error);
+    console.error("Google Wallet scanned offer redemption error:", api);
+    res.status(502).json({
+      ok: false,
+      error: "No se pudo completar la redención escaneada.",
+      google: api
+    });
+  }
+});
+
 router.get("/businesses/:businessId/offer-redemptions", async (req, res) => {
   const userId = res.locals.userId as string;
   const business = await ownedBusiness(userId, req.params.businessId);
