@@ -212,7 +212,7 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
   );
 
   const totals = await query<{ totalCustomers: number; totalPoints: number }>(
-    "SELECT COUNT(*)::int as \"totalCustomers\", COALESCE(SUM(points), 0)::int as \"totalPoints\" FROM customers WHERE business_id = $1",
+    "SELECT COUNT(*)::int as \"totalCustomers\", COALESCE(SUM(points), 0)::int as \"totalPoints\", COUNT(wallet_object_id)::int as \"totalWalletCards\" FROM customers WHERE business_id = $1",
     [business.id]
   );
 
@@ -327,7 +327,7 @@ router.get("/businesses/:businessId/loyalty/:customerId", async (req, res) => {
   try {
     const data = await getLoyaltyObject(business, req.params.customerId);
     const customer = await query<{ external_id: string; name: string; points: number }>(
-      "SELECT external_id, name, points FROM customers WHERE business_id = $1 AND external_id = $2",
+      "SELECT external_id, name, points, status FROM customers WHERE business_id = $1 AND external_id = $2",
       [business.id, req.params.customerId]
     );
     if (!customer.rows[0]) {
@@ -338,7 +338,8 @@ router.get("/businesses/:businessId/loyalty/:customerId", async (req, res) => {
     const addToWalletUrl = createAddToWalletUrl(business, {
       id: customer.rows[0].external_id,
       name: customer.rows[0].name,
-      points: customer.rows[0].points
+      points: customer.rows[0].points,
+      status: customer.rows[0].status
     });
 
     res.json({ ok: true, data, addToWalletUrl });
