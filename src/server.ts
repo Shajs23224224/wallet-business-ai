@@ -403,6 +403,21 @@ app.patch("/api/wallet/loyalty/:id/points", async (req, res) => {
   }
 });
 
+app.use("/api", (error: unknown, _req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  const message = error instanceof Error ? error.message : "Unexpected server error";
+  console.error("Unhandled API error:", error);
+  res.status(500).json({
+    ok: false,
+    error: "Internal server error",
+    detail: message
+  });
+});
+
 app.listen(env.PORT, () => {
   console.log(`Wallet Business AI API listening on port ${env.PORT}`);
 });
