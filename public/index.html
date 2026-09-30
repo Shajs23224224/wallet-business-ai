@@ -1481,7 +1481,7 @@
           }
         );
         const body = await readApiResponse(response);
-        if (!response.ok) throw new Error(body.error || "No se pudo generar el borrador con Gemini.");
+        if (!response.ok) throw new Error(body.error || body.detail || "No se pudo generar el borrador con Gemini.");
 
         renderAiOfferDraft(body.data.draft);
         showResult("Borrador generado con Gemini. Revísalo antes de crear la campaña.");
