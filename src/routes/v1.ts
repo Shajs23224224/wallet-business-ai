@@ -415,66 +415,91 @@ router.get("/businesses/:businessId/analytics", async (req, res) => {
   });
 });
 router.post("/businesses/:businessId/ai/offers/preview", async (req, res) => {
-  const parsed = aiOfferPromptSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ ok: false, error: parsed.error.flatten() });
-    return;
-  }
-
-  const userId = res.locals.userId as string;
-  const business = await ownedBusiness(userId, req.params.businessId);
-  if (!business) {
-    res.status(404).json({ ok: false, error: "Business not found" });
-    return;
-  }
-
   try {
-    const draft = await generateOfferDraft(business, parsed.data.prompt);
-    const validated = aiOfferDraftSchema.safeParse(draft);
-
-    if (!validated.success) {
-      console.error("Gemini offer draft validation error:", validated.error.flatten());
-      res.status(502).json({ ok: false, error: "Gemini generó un borrador que no cumple las validaciones." });
+    const parsed = aiOfferPromptSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: parsed.error.flatten() });
       return;
     }
 
-    const startsAt = validated.data.startsAt ? new Date(validated.data.startsAt) : null;
-    const endsAt = validated.data.endsAt ? new Date(validated.data.endsAt) : null;
-
-    if (startsAt && endsAt && endsAt <= startsAt) {
-      res.status(502).json({ ok: false, error: "Gemini generó un intervalo de fechas inválido. Intenta describir mejor la duración de la campaña." });
+    const userId = res.locals.userId as string;
+    const business = await ownedBusiness(userId, req.params.businessId);
+    if (!business) {
+      res.status(404).json({ ok: false, error: "Business not found" });
       return;
     }
 
-    res.json({
-      ok: true,
-      data: {
-        draft: validated.data,
-        note: "Borrador generado. La creación final sigue pasando por las validaciones normales de campañas y Google Wallet."
+    try {
+      const draft = await generateOfferDraft(business, parsed.data.prompt);
+      const validated = aiOfferDraftSchema.safeParse(draft);
+
+      if (!validated.success) {
+        console.error("Gemini offer draft validation error:", validated.error.flatten());
+        res.status(502).json({ ok: false, error: "Gemini generó un borrador que no cumple las validaciones." });
+        return;
       }
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "GEMINI_NOT_CONFIGURED") {
-      res.status(503).json({
-        ok: false,
-        error: "La asistencia de Gemini no está configurada. Define GEMINI_API_KEY en el servidor."
+
+      const startsAt = validated.data.startsAt ? new Date(validated.data.startsAt) : null;
+      const endsAt = validated.data.endsAt ? new Date(validated.data.endsAt) : null;
+
+      if (startsAt && endsAt && endsAt <= startsAt) {
+        res.status(502).json({ ok: false, error: "Gemini generó un intervalo de fechas inválido. Intenta describir mejor la duración de la campaña." });
+        return;
+      }
+
+      res.json({
+        ok: true,
+        data: {
+          draft: validated.data,
+          note: "Borrador generado. La creación final sigue pasando por las validaciones normales de campañas y Google Wallet."
+        }
       });
-      return;
-    }
+    } catch (error) {
+      if (error instanceof Error && error.message === "GEMINI_NOT_CONFIGURED") {
+        res.status(503).json({
+          ok: false,
+          error: "La asistencia de Gemini no está configurada. Define GEMINI_API_KEY en el servidor."
+        });
+        return;
+      }
 
-    if (error instanceof Error && error.message === "GEMINI_EMPTY_RESPONSE") {
-      res.status(502).json({ ok: false, error: "Gemini no devolvió un borrador." });
-      return;
-    }
+      if (error instanceof Error && error.message === "GEMINI_TIMEOUT") {
+        res.status(504).json({
+          ok: false,
+          error: "Gemini tardó demasiado en responder. Intenta nuevamente."
+        });
+        return;
+      }
 
-    if (error instanceof Error && (error.message === "GEMINI_INVALID_JSON" || error.name === "ZodError")) {
-      console.error("Gemini offer draft parsing error:", error);
-      res.status(502).json({ ok: false, error: "Gemini devolvió una estructura inválida para la campaña." });
-      return;
-    }
+      if (error instanceof Error && error.message === "GEMINI_EMPTY_RESPONSE") {
+        res.status(502).json({ ok: false, error: "Gemini no devolvió un borrador." });
+        return;
+      }
 
-    console.error("Gemini offer preview error:", error);
-    res.status(502).json({ ok: false, error: "No se pudo generar el borrador con Gemini." });
+      if (error instanceof Error && (error.message === "GEMINI_INVALID_JSON" || error.name === "ZodError")) {
+        console.error("Gemini offer draft parsing error:", error);
+        res.status(502).json({ ok: false, error: "Gemini devolvió una estructura inválida para la campaña." });
+        return;
+      }
+
+      if (error instanceof Error && error.message === "GEMINI_REQUEST_FAILED") {
+        res.status(502).json({
+          ok: false,
+          error: "No se pudo completar la solicitud a Gemini. Verifica la API key, cuota y conectividad del servidor."
+        });
+        return;
+      }
+
+      console.error("Gemini offer preview error:", error);
+      res.status(502).json({ ok: false, error: "No se pudo generar el borrador con Gemini." });
+    }
+  } catch (error) {
+    console.error("Unhandled Gemini preview route error:", error);
+    res.status(500).json({
+      ok: false,
+      error: "No se pudo procesar la solicitud del asistente.",
+      detail: error instanceof Error ? error.message : "Unexpected error"
+    });
   }
 });
 
