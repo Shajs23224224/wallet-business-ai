@@ -261,6 +261,21 @@
       </form>
 
       <div id="offers-empty" class="empty-state" hidden>No hay campañas de cupones todavía.</div>
+      <div id="redemptions-card" style="margin-top:16px;" hidden>
+        <div class="toolbar">
+          <h3>Últimas redenciones</h3>
+          <button id="refresh-redemptions" class="secondary small" type="button">Actualizar</button>
+        </div>
+        <div id="redemptions-empty" class="empty-state" hidden>No hay redenciones todavía.</div>
+        <div id="redemptions-table-wrap" class="table-wrap" hidden>
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Oferta</th><th>Cliente</th><th>Notas</th></tr>
+            </thead>
+            <tbody id="redemptions-body"></tbody>
+          </table>
+        </div>
+      </div>
       <div id="offers-table-wrap" class="table-wrap" hidden>
         <table>
           <thead>
@@ -276,6 +291,24 @@
           <tbody id="offers-body"></tbody>
         </table>
       </div>
+
+      <form id="redeem-offer-form" hidden>
+        <h3>Redimir cupón</h3>
+        <p>Confirma el código mostrado en el cupón y registra la redención. Una redención exitosa marca el Offer Object como completado.</p>
+        <div class="row">
+          <label>Campaña
+            <select name="offerId" id="redeem-offer-select" required></select>
+          </label>
+          <label>ID del cliente
+            <input name="customerId" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="cliente-001">
+          </label>
+        </div>
+        <div class="row">
+          <label>Código de redención<input name="code" required maxlength="64" pattern="[A-Za-z0-9_-]+" placeholder="DESC20"></label>
+          <label>Notas<input name="notes" maxlength="500" placeholder="Compra #1234"></label>
+        </div>
+        <button id="redeem-offer-button" type="submit">Confirmar redención</button>
+      </form>
 
       <form id="issue-offer-form">
         <h3>Emitir cupón a un cliente</h3>
@@ -474,6 +507,14 @@
     const issueOfferForm = document.getElementById("issue-offer-form");
     const issueOfferSelect = document.getElementById("issue-offer-select");
     const issueOfferButton = document.getElementById("issue-offer-button");
+    const redeemOfferForm = document.getElementById("redeem-offer-form");
+    const redeemOfferSelect = document.getElementById("redeem-offer-select");
+    const redeemOfferButton = document.getElementById("redeem-offer-button");
+    const redemptionsCard = document.getElementById("redemptions-card");
+    const refreshRedemptions = document.getElementById("refresh-redemptions");
+    const redemptionsEmpty = document.getElementById("redemptions-empty");
+    const redemptionsTableWrap = document.getElementById("redemptions-table-wrap");
+    const redemptionsBody = document.getElementById("redemptions-body");
 
     const dashboardTitle = document.getElementById("dashboard-title");
     const businessMeta = document.getElementById("business-meta");
@@ -497,6 +538,7 @@
     let customerPage = 1;
     let businessCache = [];
     let offerCache = [];
+    let redemptionCache = [];
     let customerPageSizeValue = 25;
     let customerSortValue = "updatedAt";
     let customerOrderValue = "desc";
@@ -749,12 +791,17 @@
     async function loadOffers() {
       if (!selectedBusinessId()) {
         offerCache = [];
+        redemptionCache = [];
         offersBody.innerHTML = "";
         offersEmpty.hidden = false;
         offersTableWrap.hidden = true;
         issueOfferSelect.innerHTML = "";
+        redeemOfferSelect.innerHTML = "";
         issueOfferButton.disabled = true;
+        redeemOfferButton.disabled = true;
         editOfferForm.hidden = true;
+        redeemOfferForm.hidden = true;
+        redemptionsCard.hidden = true;
         return;
       }
 
@@ -770,11 +817,17 @@
 
       const issuableOffers = offerCache.filter((offer) => offer.lifecycleState === "ACTIVE");
 
+      issueOfferSelect.innerHTML = "";
+      redeemOfferSelect.innerHTML = "";
+
       for (const offer of issuableOffers) {
         const option = document.createElement("option");
         option.value = offer.id;
         option.textContent = offer.title + " · " + offer.code;
         issueOfferSelect.appendChild(option);
+
+        const redeemOption = option.cloneNode(true);
+        redeemOfferSelect.appendChild(redeemOption);
       }
 
       for (const offer of offerCache) {
@@ -804,7 +857,7 @@
         stateCell.appendChild(pill);
 
         const issuedCell = document.createElement("td");
-        issuedCell.textContent = formatNumber(offer.issuedCount);
+        issuedCell.textContent = formatNumber(offer.issuedCount) + " / " + formatNumber(offer.redeemedCount || 0);
 
         const actionCell = document.createElement("td");
         const actions = document.createElement("div");
@@ -875,6 +928,48 @@
       offersEmpty.hidden = hasOffers;
       offersTableWrap.hidden = !hasOffers;
       issueOfferButton.disabled = issuableOffers.length === 0;
+      redeemOfferButton.disabled = issuableOffers.length === 0;
+      redeemOfferForm.hidden = issuableOffers.length === 0;
+      await loadRedemptions();
+    }
+
+    async function loadRedemptions() {
+      if (!selectedBusinessId()) {
+        redemptionsCard.hidden = true;
+        return;
+      }
+
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/offer-redemptions"
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudieron cargar las redenciones.");
+
+      redemptionCache = body.data;
+      redemptionsBody.innerHTML = "";
+
+      for (const item of redemptionCache) {
+        const row = document.createElement("tr");
+        const dateCell = document.createElement("td");
+        dateCell.textContent = formatDateTime(item.redeemedAt);
+
+        const offerCell = document.createElement("td");
+        offerCell.textContent = item.offerTitle;
+
+        const customerCell = document.createElement("td");
+        customerCell.textContent = item.customerName + " · " + item.customerId;
+
+        const notesCell = document.createElement("td");
+        notesCell.textContent = item.notes || "—";
+
+        row.append(dateCell, offerCell, customerCell, notesCell);
+        redemptionsBody.appendChild(row);
+      }
+
+      const hasRedemptions = redemptionCache.length > 0;
+      redemptionsCard.hidden = false;
+      redemptionsEmpty.hidden = hasRedemptions;
+      redemptionsTableWrap.hidden = !hasRedemptions;
     }
 
     async function loadDashboard() {
@@ -1189,6 +1284,49 @@
       } finally {
         saveOfferButton.disabled = false;
       }
+    });
+
+    redeemOfferForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const offerId = redeemOfferForm.elements.offerId.value;
+      const customerId = redeemOfferForm.elements.customerId.value.trim();
+      const code = redeemOfferForm.elements.code.value.trim();
+
+      if (!selectedBusinessId() || !offerId) {
+        showResult("Selecciona una campaña activa.");
+        return;
+      }
+
+      redeemOfferButton.disabled = true;
+      try {
+        const response = await apiFetch(
+          "/businesses/" + encodeURIComponent(selectedBusinessId()) +
+          "/offers/" + encodeURIComponent(offerId) +
+          "/customers/" + encodeURIComponent(customerId) + "/redeem",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              code,
+              notes: String(redeemOfferForm.elements.notes.value || "").trim() || undefined
+            })
+          }
+        );
+        const body = await readApiResponse(response);
+        if (!response.ok) throw new Error(body.error || "No se pudo redimir el cupón.");
+
+        redeemOfferForm.reset();
+        await loadOffers();
+        showResult("Cupón redimido correctamente. El pase de Google Wallet quedó completado.");
+        guideStatus.innerHTML = "Redención registrada: <strong>el cupón quedó marcado como completado</strong>.";
+      } catch (error) {
+        showResult(error instanceof Error ? error.message : "Error inesperado.");
+      } finally {
+        redeemOfferButton.disabled = false;
+      }
+    });
+
+    refreshRedemptions.addEventListener("click", () => {
+      loadRedemptions().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar las redenciones."));
     });
 
     issueOfferForm.addEventListener("submit", async (event) => {
