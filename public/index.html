@@ -90,6 +90,12 @@
     .scanner video { display: block; width: 100%; max-height: 360px; object-fit: cover; border-radius: 12px; background: #111827; }
     .scanner-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .scanner-status { margin-top: 10px; }
+    .analytics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .analytics-stat { border: 1px solid #e4e8ee; border-radius: 14px; padding: 14px; background: #fafbfc; }
+    .analytics-stat .label { color: #667085; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .analytics-stat .value { margin-top: 5px; font-size: 24px; font-weight: 800; }
+    .analytics-bar { height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; min-width: 120px; }
+    .analytics-bar > span { display: block; height: 100%; background: #172033; }
     @media (max-width: 780px) {
       .row, .stats { grid-template-columns: 1fr; }
       main { width: min(100% - 20px, 1080px); margin-top: 18px; }
@@ -339,6 +345,56 @@
       </form>
     </section>
 
+    <section class="card app-card" id="analytics-card" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Analítica</h2>
+          <p>Métricas de emisión, redención y participación de clientes.</p>
+        </div>
+        <div class="header-actions">
+          <select id="analytics-days" aria-label="Periodo de analítica">
+            <option value="7">7 días</option>
+            <option value="30" selected>30 días</option>
+            <option value="90">90 días</option>
+          </select>
+          <button id="refresh-analytics" class="secondary small" type="button">Actualizar</button>
+        </div>
+      </div>
+
+      <div class="analytics-grid">
+        <div class="analytics-stat"><div class="label">Tasa de redención</div><div id="analytics-redemption-rate" class="value">0%</div></div>
+        <div class="analytics-stat"><div class="label">Cupones emitidos</div><div id="analytics-issued" class="value">0</div></div>
+        <div class="analytics-stat"><div class="label">Cupones redimidos</div><div id="analytics-redeemed" class="value">0</div></div>
+        <div class="analytics-stat"><div class="label">Clientes recurrentes</div><div id="analytics-repeat" class="value">0</div></div>
+      </div>
+
+      <h3 style="margin-top:24px;">Rendimiento por campaña</h3>
+      <div id="analytics-offers-empty" class="empty-state" hidden>No hay campañas con actividad todavía.</div>
+      <div id="analytics-offers-wrap" class="table-wrap" hidden>
+        <table>
+          <thead><tr><th>Campaña</th><th>Estado</th><th>Emitidos</th><th>Redimidos</th><th>Conversión</th></tr></thead>
+          <tbody id="analytics-offers-body"></tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:24px;">Clientes con actividad</h3>
+      <div id="analytics-customers-empty" class="empty-state" hidden>No hay clientes con actividad de cupones todavía.</div>
+      <div id="analytics-customers-wrap" class="table-wrap" hidden>
+        <table>
+          <thead><tr><th>Cliente</th><th>Emitidos</th><th>Redimidos</th></tr></thead>
+          <tbody id="analytics-customers-body"></tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:24px;">Actividad diaria</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Emitidos</th><th>Redimidos</th></tr></thead>
+          <tbody id="analytics-activity-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="card app-card" id="dashboard-card" hidden>
       <div class="toolbar">
         <div>
@@ -489,6 +545,19 @@
     const refreshDashboard = document.getElementById("refresh-dashboard");
     const refreshCustomers = document.getElementById("refresh-customers");
     const refreshOffers = document.getElementById("refresh-offers");
+    const refreshAnalytics = document.getElementById("refresh-analytics");
+    const analyticsDays = document.getElementById("analytics-days");
+    const analyticsRedemptionRate = document.getElementById("analytics-redemption-rate");
+    const analyticsIssued = document.getElementById("analytics-issued");
+    const analyticsRedeemed = document.getElementById("analytics-redeemed");
+    const analyticsRepeat = document.getElementById("analytics-repeat");
+    const analyticsOffersEmpty = document.getElementById("analytics-offers-empty");
+    const analyticsOffersWrap = document.getElementById("analytics-offers-wrap");
+    const analyticsOffersBody = document.getElementById("analytics-offers-body");
+    const analyticsCustomersEmpty = document.getElementById("analytics-customers-empty");
+    const analyticsCustomersWrap = document.getElementById("analytics-customers-wrap");
+    const analyticsCustomersBody = document.getElementById("analytics-customers-body");
+    const analyticsActivityBody = document.getElementById("analytics-activity-body");
     const appCards = [...document.querySelectorAll(".app-card")];
     const tokenKey = "wallet_business_ai_token";
     const selectedBusinessKey = "wallet_business_ai_selected_business";
@@ -738,6 +807,7 @@
       syncGuidance();
       syncBusinessEditor();
       await loadDashboard();
+      await loadAnalytics();
     }
 
     function formatOfferChannel(value) {
@@ -994,6 +1064,90 @@
       redemptionsTableWrap.hidden = !hasRedemptions;
     }
 
+    function formatPercent(value) {
+      return Number(value || 0).toLocaleString("es-CO", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+      }) + "%";
+    }
+
+    async function loadAnalytics() {
+      if (!selectedBusinessId()) {
+        analyticsRedemptionRate.textContent = "0%";
+        analyticsIssued.textContent = "0";
+        analyticsRedeemed.textContent = "0";
+        analyticsRepeat.textContent = "0";
+        analyticsOffersBody.innerHTML = "";
+        analyticsCustomersBody.innerHTML = "";
+        analyticsActivityBody.innerHTML = "";
+        analyticsOffersEmpty.hidden = false;
+        analyticsOffersWrap.hidden = true;
+        analyticsCustomersEmpty.hidden = false;
+        analyticsCustomersWrap.hidden = true;
+        return;
+      }
+
+      const response = await apiFetch(
+        "/businesses/" + encodeURIComponent(selectedBusinessId()) +
+        "/analytics?days=" + encodeURIComponent(analyticsDays.value)
+      );
+      const body = await readApiResponse(response);
+      if (!response.ok) throw new Error(body.error || "No se pudo cargar la analítica.");
+
+      const summary = body.data.summary;
+      analyticsRedemptionRate.textContent = formatPercent(summary.redemptionRate);
+      analyticsIssued.textContent = formatNumber(summary.totalIssued);
+      analyticsRedeemed.textContent = formatNumber(summary.totalRedeemed);
+      analyticsRepeat.textContent = formatNumber(summary.repeatRedeemers);
+
+      analyticsOffersBody.innerHTML = "";
+      for (const offer of body.data.offers) {
+        const row = document.createElement("tr");
+        const title = document.createElement("td");
+        title.textContent = offer.title;
+        const state = document.createElement("td");
+        state.textContent = offer.state === "ACTIVE" ? "Activa" : "Inactiva";
+        const issued = document.createElement("td");
+        issued.textContent = formatNumber(offer.issued);
+        const redeemed = document.createElement("td");
+        redeemed.textContent = formatNumber(offer.redeemed);
+        const rate = document.createElement("td");
+        rate.textContent = formatPercent(offer.redemptionRate);
+        row.append(title, state, issued, redeemed, rate);
+        analyticsOffersBody.appendChild(row);
+      }
+      analyticsOffersEmpty.hidden = body.data.offers.length > 0;
+      analyticsOffersWrap.hidden = body.data.offers.length === 0;
+
+      analyticsCustomersBody.innerHTML = "";
+      for (const customer of body.data.topCustomers) {
+        const row = document.createElement("tr");
+        const name = document.createElement("td");
+        name.textContent = customer.customerName + " · " + customer.customerId;
+        const issued = document.createElement("td");
+        issued.textContent = formatNumber(customer.issued);
+        const redeemed = document.createElement("td");
+        redeemed.textContent = formatNumber(customer.redeemed);
+        row.append(name, issued, redeemed);
+        analyticsCustomersBody.appendChild(row);
+      }
+      analyticsCustomersEmpty.hidden = body.data.topCustomers.length > 0;
+      analyticsCustomersWrap.hidden = body.data.topCustomers.length === 0;
+
+      analyticsActivityBody.innerHTML = "";
+      for (const item of body.data.activity) {
+        const row = document.createElement("tr");
+        const day = document.createElement("td");
+        day.textContent = new Date(item.day + "T00:00:00").toLocaleDateString("es-CO");
+        const issued = document.createElement("td");
+        issued.textContent = formatNumber(item.issued);
+        const redeemed = document.createElement("td");
+        redeemed.textContent = formatNumber(item.redeemed);
+        row.append(day, issued, redeemed);
+        analyticsActivityBody.appendChild(row);
+      }
+    }
+
     async function loadDashboard() {
       if (!selectedBusinessId()) {
         dashboardTitle.textContent = "Dashboard";
@@ -1209,6 +1363,15 @@
 
     refreshOffers.addEventListener("click", () => {
       loadOffers().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar las ofertas."));
+      loadAnalytics().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo actualizar la analítica."));
+    });
+
+    refreshAnalytics.addEventListener("click", () => {
+      loadAnalytics().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo actualizar la analítica."));
+    });
+
+    analyticsDays.addEventListener("change", () => {
+      loadAnalytics().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cambiar el periodo."));
     });
 
     offerForm.addEventListener("submit", async (event) => {
