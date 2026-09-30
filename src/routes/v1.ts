@@ -232,6 +232,183 @@ function normalizeOfferDate(
   return value === null ? null : new Date(value).toISOString();
 }
 
+router.get("/businesses/:businessId/analytics", async (req, res) => {
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const daysRaw = typeof req.query.days === "string" ? req.query.days : "30";
+  const days = Number.parseInt(daysRaw, 10);
+  if (![7, 30, 90].includes(days)) {
+    res.status(400).json({ ok: false, error: "days must be 7, 30 or 90" });
+    return;
+  }
+
+  const summaryResult = await query<{
+    totalCustomers: number;
+    activeCustomers: number;
+    totalOffers: number;
+    activeOffers: number;
+    totalIssued: number;
+    totalRedeemed: number;
+    couponCustomers: number;
+    redeemingCustomers: number;
+    repeatRedeemers: number;
+  }>(
+    `WITH issued AS (
+       SELECT COUNT(*)::int AS total_issued, COUNT(DISTINCT customer_id)::int AS coupon_customers
+         FROM offer_objects oo
+         JOIN offers o ON o.id = oo.offer_id
+        WHERE o.business_id = $1
+     ),
+     redeemed AS (
+       SELECT COUNT(*)::int AS total_redeemed,
+              COUNT(DISTINCT customer_id)::int AS redeeming_customers
+         FROM offer_redemptions r
+         JOIN offers o ON o.id = r.offer_id
+        WHERE o.business_id = $1
+     ),
+     repeat_redeemers AS (
+       SELECT COUNT(*)::int AS repeat_redeemers
+         FROM (
+           SELECT r.customer_id
+             FROM offer_redemptions r
+             JOIN offers o ON o.id = r.offer_id
+            WHERE o.business_id = $1
+            GROUP BY r.customer_id
+           HAVING COUNT(*) >= 2
+         ) grouped
+     )
+     SELECT
+       (SELECT COUNT(*)::int FROM customers WHERE business_id = $1) AS "totalCustomers",
+       (SELECT COUNT(*)::int FROM customers WHERE business_id = $1 AND status = 'ACTIVE') AS "activeCustomers",
+       (SELECT COUNT(*)::int FROM offers WHERE business_id = $1) AS "totalOffers",
+       (SELECT COUNT(*)::int FROM offers WHERE business_id = $1 AND state = 'ACTIVE') AS "activeOffers",
+       issued.total_issued AS "totalIssued",
+       redeemed.total_redeemed AS "totalRedeemed",
+       issued.coupon_customers AS "couponCustomers",
+       redeemed.redeeming_customers AS "redeemingCustomers",
+       repeat_redeemers.repeat_redeemers AS "repeatRedeemers"
+     FROM issued, redeemed, repeat_redeemers`,
+    [business.id]
+  );
+
+  const offerPerformanceResult = await query<{
+    offerId: string;
+    title: string;
+    state: "ACTIVE" | "INACTIVE";
+    issued: number;
+    redeemed: number;
+  }>(
+    `SELECT o.id::text AS "offerId",
+            o.title,
+            o.state,
+            COUNT(DISTINCT oo.id)::int AS issued,
+            COUNT(DISTINCT r.id)::int AS redeemed
+       FROM offers o
+       LEFT JOIN offer_objects oo ON oo.offer_id = o.id
+       LEFT JOIN offer_redemptions r ON r.offer_id = o.id
+      WHERE o.business_id = $1
+      GROUP BY o.id
+      ORDER BY redeemed DESC, issued DESC, o.created_at DESC`,
+    [business.id]
+  );
+
+  const topCustomersResult = await query<{
+    customerId: string;
+    customerName: string;
+    issued: number;
+    redeemed: number;
+  }>(
+    `SELECT c.external_id AS "customerId",
+            c.name AS "customerName",
+            COUNT(DISTINCT oo.id)::int AS issued,
+            COUNT(DISTINCT r.id)::int AS redeemed
+       FROM customers c
+       LEFT JOIN offer_objects oo ON oo.customer_id = c.id
+       LEFT JOIN offer_redemptions r ON r.customer_id = c.id
+      WHERE c.business_id = $1
+      GROUP BY c.id, c.external_id, c.name
+      HAVING COUNT(DISTINCT oo.id) > 0 OR COUNT(DISTINCT r.id) > 0
+      ORDER BY redeemed DESC, issued DESC, c.name ASC
+      LIMIT 20`,
+    [business.id]
+  );
+
+  const activityResult = await query<{
+    day: string;
+    issued: number;
+    redeemed: number;
+  }>(
+    `WITH dates AS (
+       SELECT generate_series(
+         CURRENT_DATE - ($2::int - 1),
+         CURRENT_DATE,
+         INTERVAL '1 day'
+       )::date AS day
+     ),
+     issued AS (
+       SELECT created_at::date AS day, COUNT(*)::int AS count
+         FROM offer_objects oo
+         JOIN offers o ON o.id = oo.offer_id
+        WHERE o.business_id = $1
+          AND oo.created_at >= CURRENT_DATE - ($2::int - 1)
+        GROUP BY created_at::date
+     ),
+     redeemed AS (
+       SELECT redeemed_at::date AS day, COUNT(*)::int AS count
+         FROM offer_redemptions r
+         JOIN offers o ON o.id = r.offer_id
+        WHERE o.business_id = $1
+          AND r.redeemed_at >= CURRENT_DATE - ($2::int - 1)
+        GROUP BY redeemed_at::date
+     )
+     SELECT dates.day::text,
+            COALESCE(issued.count, 0)::int AS issued,
+            COALESCE(redeemed.count, 0)::int AS redeemed
+       FROM dates
+       LEFT JOIN issued ON issued.day = dates.day
+       LEFT JOIN redeemed ON redeemed.day = dates.day
+      ORDER BY dates.day DESC`,
+    [business.id, days]
+  );
+
+  const summary = summaryResult.rows[0] ?? {
+    totalCustomers: 0,
+    activeCustomers: 0,
+    totalOffers: 0,
+    activeOffers: 0,
+    totalIssued: 0,
+    totalRedeemed: 0,
+    couponCustomers: 0,
+    redeemingCustomers: 0,
+    repeatRedeemers: 0
+  };
+
+  res.json({
+    ok: true,
+    data: {
+      summary: {
+        ...summary,
+        redemptionRate: summary.totalIssued === 0
+          ? 0
+          : Number(((summary.totalRedeemed / summary.totalIssued) * 100).toFixed(2))
+      },
+      offers: offerPerformanceResult.rows.map((offer) => ({
+        ...offer,
+        redemptionRate: offer.issued === 0
+          ? 0
+          : Number(((offer.redeemed / offer.issued) * 100).toFixed(2))
+      })),
+      topCustomers: topCustomersResult.rows,
+      activity: activityResult.rows,
+      days
+    }
+  });
+});
 router.get("/businesses/:businessId/offers", async (req, res) => {
   const userId = res.locals.userId as string;
   const business = await ownedBusiness(userId, req.params.businessId);
