@@ -109,7 +109,7 @@ export async function generateOfferDraft(
     }
   });
 
-  const text = response.text?.trim();
+  const text = typeof response.text === "string" ? response.text.trim() : "";
   if (!text) {
     throw new Error("GEMINI_EMPTY_RESPONSE");
   }
