@@ -421,6 +421,9 @@
         statPoints.textContent = "0";
         statWallet.textContent = "0";
         customersEmpty.hidden = false;
+        customersEmpty.textContent = (customerSearch.value.trim() || customerStatusFilter.value !== "ALL")
+          ? "No hay clientes que coincidan con los filtros actuales."
+          : "Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.";
         customersTableWrap.hidden = true;
         customersBody.innerHTML = "";
         customerFilterSummary.textContent = "Selecciona un negocio para buscar clientes.";
@@ -448,7 +451,7 @@
       businessMeta.textContent = selected.programName + " · " + customers.length + " cliente(s)";
       statCustomers.textContent = formatNumber(stats.totalCustomers);
       statPoints.textContent = formatNumber(stats.totalPoints);
-      statWallet.textContent = formatNumber(customers.filter((customer) => Boolean(customer.walletObjectId)).length);
+      statWallet.textContent = formatNumber(stats.totalWalletCards);
       customerFilterSummary.textContent = "Mostrando " + formatNumber(body.data.filteredCount) + " de " + formatNumber(stats.totalCustomers) + " cliente(s).";
 
       customersBody.innerHTML = "";
