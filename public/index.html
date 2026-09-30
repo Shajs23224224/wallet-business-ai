@@ -79,6 +79,8 @@
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .pill { display: inline-flex; padding: 5px 9px; border-radius: 999px; background: #eef7ee; color: #245b2a; font-size: 12px; font-weight: 700; }
     .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .pagination { margin-top: 16px; }
+    .pagination button { min-width: 110px; }
     @media (max-width: 780px) {
       .row, .stats { grid-template-columns: 1fr; }
       main { width: min(100% - 20px, 1080px); margin-top: 18px; }
@@ -185,10 +187,44 @@
           </select>
         </label>
       </div>
+      <div class="row" style="margin-top:12px;">
+        <label>Ordenar por
+          <select id="customer-sort">
+            <option value="updatedAt">Última actualización</option>
+            <option value="name">Nombre</option>
+            <option value="points">Puntos</option>
+            <option value="createdAt">Fecha de creación</option>
+          </select>
+        </label>
+        <label>Orden
+          <select id="customer-order">
+            <option value="desc">Descendente</option>
+            <option value="asc">Ascendente</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <label>Clientes por página
+          <select id="customer-page-size">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+        <div></div>
+      </div>
       <p id="customer-filter-summary" class="muted">Mostrando todos los clientes.</p>
 
       <div id="customers-empty" class="empty-state" hidden>
         Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.
+      </div>
+
+      <div id="customer-pagination" class="toolbar pagination" hidden>
+        <span id="customer-page-summary" class="muted">Página 1 de 1</span>
+        <div class="header-actions">
+          <button id="customer-prev" class="secondary small" type="button">Anterior</button>
+          <button id="customer-next" class="small" type="button">Siguiente</button>
+        </div>
       </div>
 
       <div id="customers-table-wrap" class="table-wrap" hidden>
@@ -299,7 +335,19 @@
     const customersBody = document.getElementById("customers-body");
     const customerSearch = document.getElementById("customer-search");
     const customerStatusFilter = document.getElementById("customer-status-filter");
+    const customerSort = document.getElementById("customer-sort");
+    const customerOrder = document.getElementById("customer-order");
+    const customerPageSize = document.getElementById("customer-page-size");
     const customerFilterSummary = document.getElementById("customer-filter-summary");
+    const customerPagination = document.getElementById("customer-pagination");
+    const customerPageSummary = document.getElementById("customer-page-summary");
+    const customerPrev = document.getElementById("customer-prev");
+    const customerNext = document.getElementById("customer-next");
+
+    let customerPage = 1;
+    let customerPageSizeValue = 25;
+    let customerSortValue = "updatedAt";
+    let customerOrderValue = "desc";
 
     function selectedBusinessId() {
       return businessSelect.value;
@@ -421,10 +469,8 @@
         statPoints.textContent = "0";
         statWallet.textContent = "0";
         customersEmpty.hidden = false;
-        customersEmpty.textContent = (customerSearch.value.trim() || customerStatusFilter.value !== "ALL")
-          ? "No hay clientes que coincidan con los filtros actuales."
-          : "Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.";
         customersTableWrap.hidden = true;
+        customerPagination.hidden = true;
         customersBody.innerHTML = "";
         customerFilterSummary.textContent = "Selecciona un negocio para buscar clientes.";
         return;
@@ -435,29 +481,49 @@
       const statusFilter = customerStatusFilter.value;
       if (search) params.set("q", search);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
+      params.set("page", String(customerPage));
+      params.set("pageSize", String(customerPageSizeValue));
+      params.set("sort", customerSortValue);
+      params.set("order", customerOrderValue);
 
-      const queryString = params.toString();
-      const response = await apiFetch(
-        "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers" + (queryString ? "?" + queryString : "")
-      );
+      const response = await apiFetch("/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers?" + params.toString());
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo cargar el dashboard.");
 
       const selected = body.data.business;
       const stats = body.data.stats;
       const customers = body.data.customers;
+      const pagination = body.data.pagination;
+
+      if (pagination.page > pagination.totalPages) {
+        customerPage = pagination.totalPages;
+        return loadDashboard();
+      }
 
       dashboardTitle.textContent = selected.name;
-      businessMeta.textContent = selected.programName + " · " + customers.length + " cliente(s)";
+      businessMeta.textContent = selected.programName + " · " + formatNumber(stats.totalCustomers) + " cliente(s)";
       statCustomers.textContent = formatNumber(stats.totalCustomers);
       statPoints.textContent = formatNumber(stats.totalPoints);
       statWallet.textContent = formatNumber(stats.totalWalletCards);
-      customerFilterSummary.textContent = "Mostrando " + formatNumber(body.data.filteredCount) + " de " + formatNumber(stats.totalCustomers) + " cliente(s).";
+
+      const firstItem = pagination.totalItems === 0 ? 0 : ((pagination.page - 1) * pagination.pageSize) + 1;
+      const lastItem = Math.min(pagination.page * pagination.pageSize, pagination.totalItems);
+      customerFilterSummary.textContent = pagination.totalItems === 0
+        ? "No hay resultados para los filtros actuales."
+        : "Mostrando " + formatNumber(firstItem) + "–" + formatNumber(lastItem) + " de " + formatNumber(pagination.totalItems) + " resultado(s).";
+
+      customerPageSummary.textContent = "Página " + formatNumber(pagination.page) + " de " + formatNumber(pagination.totalPages);
+      customerPrev.disabled = !pagination.hasPreviousPage;
+      customerNext.disabled = !pagination.hasNextPage;
+      customerPagination.hidden = pagination.totalItems === 0;
 
       customersBody.innerHTML = "";
 
       if (!customers.length) {
         customersEmpty.hidden = false;
+        customersEmpty.textContent = (search || statusFilter !== "ALL")
+          ? "No hay clientes que coincidan con los filtros actuales."
+          : "Aún no hay clientes en este negocio. Crea la primera tarjeta para empezar.";
         customersTableWrap.hidden = true;
         guideStatus.innerHTML = "Paso 2: <strong>crea la primera tarjeta</strong> para que el cliente aparezca aquí.";
       } else {
@@ -518,7 +584,7 @@
           customersBody.appendChild(row);
         }
 
-        guideStatus.innerHTML = "Paso 4: <strong>administra tus clientes desde el dashboard</strong>. Puedes abrir su tarjeta Wallet o editar sus puntos.";
+        guideStatus.innerHTML = "Paso 4: <strong>administra tus clientes desde el dashboard</strong>. Puedes ordenar, paginar, abrir su tarjeta Wallet o editar sus datos.";
       }
     }
 
@@ -609,7 +675,12 @@
     });
 
     let searchTimer = null;
+    function resetCustomerPage() {
+      customerPage = 1;
+    }
+
     function scheduleCustomerSearch() {
+      resetCustomerPage();
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(() => {
         loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo filtrar la lista."));
@@ -618,10 +689,42 @@
 
     customerSearch.addEventListener("input", scheduleCustomerSearch);
     customerStatusFilter.addEventListener("change", () => {
+      resetCustomerPage();
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo filtrar la lista."));
     });
 
+    customerSort.addEventListener("change", () => {
+      customerSortValue = customerSort.value;
+      resetCustomerPage();
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo ordenar la lista."));
+    });
+
+    customerOrder.addEventListener("change", () => {
+      customerOrderValue = customerOrder.value;
+      resetCustomerPage();
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo ordenar la lista."));
+    });
+
+    customerPageSize.addEventListener("change", () => {
+      customerPageSizeValue = Number(customerPageSize.value);
+      resetCustomerPage();
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cambiar el tamaño de página."));
+    });
+
+    customerPrev.addEventListener("click", () => {
+      if (customerPage > 1) {
+        customerPage -= 1;
+        loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar la página anterior."));
+      }
+    });
+
+    customerNext.addEventListener("click", () => {
+      customerPage += 1;
+      loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar la página siguiente."));
+    });
+
     businessSelect.addEventListener("change", () => {
+      resetCustomerPage();
       localStorage.setItem(selectedBusinessKey, selectedBusinessId());
       syncGuidance();
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar el negocio."));
