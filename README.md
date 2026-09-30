@@ -162,6 +162,32 @@ Body:
 
 El endpoint sincroniza nombre, puntos y estado con PostgreSQL y con el objeto existente de Google Wallet. El `customerId` no se cambia porque identifica de forma estable el objeto de Wallet.
 
+## Fase 5 — Paginación y ordenamiento de clientes
+
+El listado de clientes soporta paginación server-side y ordenamiento, manteniendo búsqueda y filtros.
+
+```text
+GET /api/v1/businesses/:businessId/customers
+  ?q=cliente
+  &status=ACTIVE
+  &page=1
+  &pageSize=25
+  &sort=updatedAt
+  &order=desc
+Authorization: Bearer <TOKEN>
+```
+
+Parámetros:
+
+- `page`: página desde 1.
+- `pageSize`: `25`, `50` o `100`.
+- `q`: búsqueda por nombre o ID.
+- `status`: `ALL`, `ACTIVE` o `INACTIVE`.
+- `sort`: `name`, `points`, `updatedAt` o `createdAt`.
+- `order`: `asc` o `desc`.
+
+La respuesta incluye `pagination` con total de resultados, total de páginas y flags para navegación anterior/siguiente. PostgreSQL aplica `LIMIT/OFFSET` y existen índices específicos para las consultas habituales del dashboard.
+
 ## Siguiente fase
 
 1. Panel web para negocios.
