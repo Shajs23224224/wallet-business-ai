@@ -875,6 +875,17 @@
     businessForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(businessForm);
+      const file = formData.get("logo");
+
+      if (file instanceof File && file.size === 0) {
+        formData.delete("logo");
+      }
+      if (!String(formData.get("programName") || "").trim()) {
+        formData.delete("programName");
+      }
+      if (!String(formData.get("logoUrl") || "").trim()) {
+        formData.delete("logoUrl");
+      }
 
       if (!formData.get("logo") && !String(formData.get("logoUrl") || "").trim()) {
         showResult("Selecciona una imagen para el logo o introduce una URL HTTPS.");
