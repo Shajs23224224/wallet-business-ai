@@ -218,7 +218,7 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
 router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) => {
   const parsed = businessEditSchema.safeParse(req.body);
   if (!parsed.success) {
-    if (file) await unlink(file.path).catch(() => undefined);
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
     return;
   }
@@ -226,7 +226,7 @@ router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) =
   const userId = res.locals.userId as string;
   const current = await ownedBusiness(userId, req.params.businessId);
   if (!current) {
-    if (file) await unlink(file.path).catch(() => undefined);
+    if (req.file) await unlink(req.file.path).catch(() => undefined);
     res.status(404).json({ ok: false, error: "Business not found" });
     return;
   }
