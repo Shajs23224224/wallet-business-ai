@@ -524,8 +524,8 @@
     const issueOfferButton = document.getElementById("issue-offer-button");
     const redeemOfferForm = document.getElementById("redeem-offer-form");
     const scannerVideo = document.getElementById("offer-scanner-video");
-    const startOfferScanner = document.getElementById("start-offer-scanner");
-    const stopOfferScanner = document.getElementById("stop-offer-scanner");
+    const startOfferScannerButton = document.getElementById("start-offer-scanner");
+    const stopOfferScannerButton = document.getElementById("stop-offer-scanner");
     const offerScannerStatus = document.getElementById("offer-scanner-status");
     const redeemOfferSelect = document.getElementById("redeem-offer-select");
     const redeemOfferButton = document.getElementById("redeem-offer-button");
@@ -1360,8 +1360,8 @@
       scannerVideo.pause();
       scannerVideo.srcObject = null;
       scannerVideo.hidden = true;
-      stopOfferScanner.hidden = true;
-      startOfferScanner.hidden = false;
+      stopOfferScannerButton.hidden = true;
+      startOfferScannerButton.hidden = false;
     }
 
     async function redeemScannedOffer(rawValue) {
@@ -1412,8 +1412,8 @@
 
         scannerVideo.srcObject = scannerStream;
         scannerVideo.hidden = false;
-        stopOfferScanner.hidden = false;
-        startOfferScanner.hidden = true;
+        stopOfferScannerButton.hidden = false;
+        startOfferScannerButton.hidden = true;
         scannerRunning = true;
         setScannerStatus("Apunta la cámara al QR del cupón.");
         await scannerVideo.play();
@@ -1451,14 +1451,14 @@
       }
     }
 
-    startOfferScanner.addEventListener("click", () => {
+    startOfferScannerButton.addEventListener("click", () => {
       startOfferScanner().catch((error) => {
         stopOfferScanner();
         showResult(error instanceof Error ? error.message : "No se pudo iniciar el escáner.");
       });
     });
 
-    stopOfferScanner.addEventListener("click", stopOfferScanner);
+    stopOfferScannerButton.addEventListener("click", stopOfferScanner);
 
     refreshRedemptions.addEventListener("click", () => {
       loadRedemptions().catch((error) => showResult(error instanceof Error ? error.message : "No se pudieron actualizar las redenciones."));
