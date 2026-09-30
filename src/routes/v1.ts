@@ -180,6 +180,20 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
 
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const status = typeof req.query.status === "string" ? req.query.status : "ALL";
+  const pageRaw = typeof req.query.page === "string" ? req.query.page : "1";
+  const pageSizeRaw = typeof req.query.pageSize === "string" ? req.query.pageSize : "25";
+  const sort = typeof req.query.sort === "string" ? req.query.sort : "updatedAt";
+  const order = typeof req.query.order === "string" ? req.query.order : "desc";
+
+  const page = Number.parseInt(pageRaw, 10);
+  const pageSize = Number.parseInt(pageSizeRaw, 10);
+
+  const sortColumns: Record<string, string> = {
+    name: "name",
+    points: "points",
+    updatedAt: "updated_at",
+    createdAt: "created_at"
+  };
 
   if (q.length > 120) {
     res.status(400).json({ ok: false, error: "Search query is too long" });
@@ -190,6 +204,41 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
     res.status(400).json({ ok: false, error: "Invalid customer status filter" });
     return;
   }
+
+  if (!Number.isInteger(page) || page < 1 || page > 1000000) {
+    res.status(400).json({ ok: false, error: "Invalid page" });
+    return;
+  }
+
+  if (!Number.isInteger(pageSize) || ![25, 50, 100].includes(pageSize)) {
+    res.status(400).json({ ok: false, error: "Invalid page size" });
+    return;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(sortColumns, sort)) {
+    res.status(400).json({ ok: false, error: "Invalid sort field" });
+    return;
+  }
+
+  if (!["asc", "desc"].includes(order)) {
+    res.status(400).json({ ok: false, error: "Invalid sort order" });
+    return;
+  }
+
+  const offset = (page - 1) * pageSize;
+  const sortColumn = sortColumns[sort];
+  const sortDirection = order === "asc" ? "ASC" : "DESC";
+
+  const whereParams = [business.id, q, status];
+
+  const countResult = await query<{ total: number }>(
+    `SELECT COUNT(*)::int as total
+       FROM customers
+      WHERE business_id = $1
+        AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR external_id ILIKE '%' || $2 || '%')
+        AND ($3 = 'ALL' OR status = $3)`,
+    whereParams
+  );
 
   const result = await query<{
     id: string;
@@ -207,28 +256,44 @@ router.get("/businesses/:businessId/customers", async (req, res) => {
       WHERE business_id = $1
         AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR external_id ILIKE '%' || $2 || '%')
         AND ($3 = 'ALL' OR status = $3)
-      ORDER BY updated_at DESC`,
-    [business.id, q, status]
+      ORDER BY ${sortColumn} ${sortDirection}, external_id ASC
+      LIMIT $4 OFFSET $5`,
+    [...whereParams, pageSize, offset]
   );
 
-  const totals = await query<{ totalCustomers: number; totalPoints: number }>(
+  const totals = await query<{
+    totalCustomers: number;
+    totalPoints: number;
+    totalWalletCards: number;
+  }>(
     "SELECT COUNT(*)::int as \"totalCustomers\", COALESCE(SUM(points), 0)::int as \"totalPoints\", COUNT(wallet_object_id)::int as \"totalWalletCards\" FROM customers WHERE business_id = $1",
     [business.id]
   );
+
+  const totalFiltered = countResult.rows[0]?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
 
   res.json({
     ok: true,
     data: {
       business,
-      stats: totals.rows[0] ?? { totalCustomers: 0, totalPoints: 0 },
-      filteredCount: result.rows.length,
+      stats: totals.rows[0] ?? { totalCustomers: 0, totalPoints: 0, totalWalletCards: 0 },
+      customers: result.rows,
+      pagination: {
+        page,
+        pageSize,
+        totalItems: totalFiltered,
+        totalPages,
+        hasPreviousPage: page > 1,
+        hasNextPage: page < totalPages
+      },
       filters: { q, status },
-      customers: result.rows
+      sort: { field: sort, order }
     }
   });
 });
 
-router.patch("/businesses/:businessId/customers/:customerId", async (req, res) => {
+
   const parsed = customerEditSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
