@@ -1023,9 +1023,10 @@
         link.textContent = "Añadir cupón a Google Wallet";
 
         result.append(status, link);
+        result.scrollIntoView({ behavior: "smooth", block: "center" });
         issueOfferForm.elements.customerId.value = "";
         await loadOffers();
-        showResult("Cupón emitido. Usa el enlace generado para guardarlo en Google Wallet.");
+        guideStatus.innerHTML = "Cupón emitido: <strong>abre el enlace para añadirlo a Google Wallet</strong>.";
       } catch (error) {
         showResult(error instanceof Error ? error.message : "Error inesperado.");
       } finally {
