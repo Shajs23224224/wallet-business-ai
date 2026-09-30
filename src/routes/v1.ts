@@ -165,6 +165,41 @@ router.post("/businesses/:businessId/loyalty", async (req, res) => {
   }
 });
 
+router.get("/businesses/:businessId/customers", async (req, res) => {
+  const userId = res.locals.userId as string;
+  const business = await ownedBusiness(userId, req.params.businessId);
+  if (!business) {
+    res.status(404).json({ ok: false, error: "Business not found" });
+    return;
+  }
+
+  const result = await query<{
+    id: string;
+    name: string;
+    points: number;
+    walletObjectId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>(
+    "SELECT external_id as id, name, points, wallet_object_id as \"walletObjectId\", created_at as \"createdAt\", updated_at as \"updatedAt\" FROM customers WHERE business_id = $1 ORDER BY updated_at DESC",
+    [business.id]
+  );
+
+  const totals = await query<{ totalCustomers: number; totalPoints: number }>(
+    "SELECT COUNT(*)::int as \"totalCustomers\", COALESCE(SUM(points), 0)::int as \"totalPoints\" FROM customers WHERE business_id = $1",
+    [business.id]
+  );
+
+  res.json({
+    ok: true,
+    data: {
+      business,
+      stats: totals.rows[0] ?? { totalCustomers: 0, totalPoints: 0 },
+      customers: result.rows
+    }
+  });
+});
+
 router.patch("/businesses/:businessId/loyalty/:customerId/points", async (req, res) => {
   const parsed = pointsSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -206,7 +241,22 @@ router.get("/businesses/:businessId/loyalty/:customerId", async (req, res) => {
 
   try {
     const data = await getLoyaltyObject(business, req.params.customerId);
-    res.json({ ok: true, data });
+    const customer = await query<{ external_id: string; name: string; points: number }>(
+      "SELECT external_id, name, points FROM customers WHERE business_id = $1 AND external_id = $2",
+      [business.id, req.params.customerId]
+    );
+    if (!customer.rows[0]) {
+      res.status(404).json({ ok: false, error: "Customer not found" });
+      return;
+    }
+
+    const addToWalletUrl = createAddToWalletUrl(business, {
+      id: customer.rows[0].external_id,
+      name: customer.rows[0].name,
+      points: customer.rows[0].points
+    });
+
+    res.json({ ok: true, data, addToWalletUrl });
   } catch (error) {
     const api = googleApiError(error);
     console.error("Wallet v1 get error:", api);
