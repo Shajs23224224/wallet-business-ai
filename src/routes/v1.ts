@@ -37,9 +37,21 @@ const customerEditSchema = z.object({
 function uploadLogoMiddleware(req: any, res: any, next: any) {
   logoUpload.single("logo")(req, res, (error: unknown) => {
     if (error) {
+      const code = typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+
+      if (code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({
+          ok: false,
+          error: "El logo supera el tamaño máximo de 5 MB."
+        });
+        return;
+      }
+
       res.status(400).json({
         ok: false,
-        error: error instanceof Error ? error.message : "Unable to upload logo"
+        error: error instanceof Error ? error.message : "No se pudo subir el logo."
       });
       return;
     }
@@ -154,9 +166,13 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
     return;
   }
 
-  const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl);
+  const file = req.file && req.file.size > 0 ? req.file : undefined;
+  if (req.file && req.file.size === 0) {
+    await unlink(req.file.path).catch(() => undefined);
+  }
+  const logo = resolveLogoUrl(req, file, parsed.data.logoUrl);
   if (logo.error || !logo.logoUrl) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     res.status(400).json({ ok: false, error: logo.error ?? "A logo image or HTTPS logo URL is required" });
     return;
   }
@@ -166,7 +182,7 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
   const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID ?? "";
   const classId = issuerId + ".business_" + id.replaceAll("-", "").slice(0, 12);
   if (!issuerId) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     res.status(500).json({ ok: false, error: "Google Wallet issuer is not configured" });
     return;
   }
@@ -192,7 +208,7 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
     res.status(201).json({ ok: true, data: { business, walletClass: walletClass.data } });
   } catch (error) {
     await query("DELETE FROM businesses WHERE id = $1 AND owner_user_id = $2", [business.id, userId]);
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     const api = googleApiError(error);
     console.error("Google Wallet business creation error:", api);
     res.status(502).json({ ok: false, error: "Unable to create business loyalty program", google: api });
@@ -202,7 +218,7 @@ router.post("/businesses", uploadLogoMiddleware, async (req, res) => {
 router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) => {
   const parsed = businessEditSchema.safeParse(req.body);
   if (!parsed.success) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     res.status(400).json({ ok: false, error: parsed.error.flatten() });
     return;
   }
@@ -210,14 +226,18 @@ router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) =
   const userId = res.locals.userId as string;
   const current = await ownedBusiness(userId, req.params.businessId);
   if (!current) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     res.status(404).json({ ok: false, error: "Business not found" });
     return;
   }
 
-  const logo = resolveLogoUrl(req, req.file, parsed.data.logoUrl ?? current.logoUrl);
+  const file = req.file && req.file.size > 0 ? req.file : undefined;
+  if (req.file && req.file.size === 0) {
+    await unlink(req.file.path).catch(() => undefined);
+  }
+  const logo = resolveLogoUrl(req, file, parsed.data.logoUrl ?? current.logoUrl);
   if (logo.error || !logo.logoUrl) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     res.status(400).json({ ok: false, error: logo.error ?? "A logo image or HTTPS logo URL is required" });
     return;
   }
@@ -240,7 +260,7 @@ router.patch("/businesses/:businessId", uploadLogoMiddleware, async (req, res) =
 
     res.json({ ok: true, data: result.rows[0] ?? updated });
   } catch (error) {
-    if (req.file) await unlink(req.file.path).catch(() => undefined);
+    if (file) await unlink(file.path).catch(() => undefined);
     const api = googleApiError(error);
     console.error("Google Wallet business update error:", api);
     res.status(502).json({ ok: false, error: "Unable to update business branding", google: api });
