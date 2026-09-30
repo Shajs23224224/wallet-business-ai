@@ -148,7 +148,10 @@
           <h2>Negocio</h2>
           <p>Selecciona un negocio existente o crea uno nuevo.</p>
         </div>
-        <button id="edit-business-toggle" class="secondary small" type="button">Editar negocio</button>
+        <div class="header-actions">
+          <button id="new-business-toggle" class="secondary small" type="button" hidden>Nuevo negocio</button>
+          <button id="edit-business-toggle" class="secondary small" type="button" hidden>Editar negocio</button>
+        </div>
       </div>
       <label>
         Negocio
@@ -346,6 +349,7 @@
     const businessSelect = document.getElementById("business-select");
     const businessForm = document.getElementById("business-form");
     const editBusinessForm = document.getElementById("edit-business-form");
+    const newBusinessToggle = document.getElementById("new-business-toggle");
     const editBusinessToggle = document.getElementById("edit-business-toggle");
     const cancelBusinessEdit = document.getElementById("cancel-business-edit");
     const saveBusinessButton = document.getElementById("save-business-button");
@@ -425,6 +429,33 @@
       return response;
     }
 
+    async function readApiResponse(response) {
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+
+      if (!text.trim()) {
+        return {};
+      }
+
+      if (contentType.includes("application/json")) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error("El servidor devolvió una respuesta JSON inválida.");
+        }
+      }
+
+      if (!response.ok) {
+        const cleanText = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        throw new Error(
+          "El servidor devolvió un error no JSON (" + response.status + "): " +
+          (cleanText.slice(0, 240) || "respuesta vacía")
+        );
+      }
+
+      throw new Error("El servidor devolvió una respuesta inesperada.");
+    }
+
     function showResult(message) {
       result.hidden = false;
       result.textContent = message;
@@ -439,9 +470,16 @@
       if (!business) {
         editBusinessForm.hidden = true;
         editBusinessToggle.hidden = true;
+        newBusinessToggle.hidden = true;
+        businessForm.hidden = false;
         return;
       }
+
       editBusinessToggle.hidden = false;
+      newBusinessToggle.hidden = false;
+      if (editBusinessForm.hidden) {
+        businessForm.hidden = false;
+      }
       editBusinessForm.elements.name.value = business.name;
       editBusinessForm.elements.programName.value = business.programName;
       editBusinessForm.elements.logoUrl.value = business.logoUrl;
@@ -500,7 +538,7 @@
 
     async function loadBusinesses() {
       const response = await apiFetch("/businesses");
-      const body = await response.json();
+      const body = await readApiResponse(response);
       if (!response.ok) throw new Error(body.error || "No se pudieron cargar los negocios.");
 
       const previous = localStorage.getItem(selectedBusinessKey);
@@ -554,7 +592,7 @@
       params.set("order", customerOrderValue);
 
       const response = await apiFetch("/businesses/" + encodeURIComponent(selectedBusinessId()) + "/customers?" + params.toString());
-      const body = await response.json();
+      const body = await readApiResponse(response);
       if (!response.ok) throw new Error(body.error || "No se pudo cargar el dashboard.");
 
       const selected = body.data.business;
@@ -660,7 +698,7 @@
         const response = await apiFetch(
           "/businesses/" + encodeURIComponent(selectedBusinessId()) + "/loyalty/" + encodeURIComponent(customerId)
         );
-        const body = await response.json();
+        const body = await readApiResponse(response);
         if (!response.ok) throw new Error(body.error || "No se pudo generar el enlace de Google Wallet.");
         result.innerHTML = "";
         const status = document.createElement("div");
@@ -691,7 +729,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
         });
-        const body = await response.json();
+        const body = await readApiResponse(response);
         if (!response.ok) throw new Error(body.error || "No se pudo iniciar sesión.");
         localStorage.setItem(tokenKey, body.data.token);
         authForm.reset();
@@ -713,7 +751,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
         });
-        const body = await response.json();
+        const body = await readApiResponse(response);
         if (!response.ok) throw new Error(body.error || "No se pudo crear la cuenta.");
         localStorage.setItem(tokenKey, body.data.token);
         authForm.reset();
@@ -790,9 +828,20 @@
       loadDashboard().catch((error) => showResult(error instanceof Error ? error.message : "No se pudo cargar la página siguiente."));
     });
 
+    newBusinessToggle.addEventListener("click", () => {
+      editBusinessForm.hidden = true;
+      businessForm.hidden = false;
+      businessForm.reset();
+      createLogoPreview.hidden = true;
+      editLogoPreview.hidden = true;
+      businessForm.scrollIntoView({ behavior: "smooth", block: "center" });
+      showResult("Formulario de nuevo negocio listo.");
+    });
+
     editBusinessToggle.addEventListener("click", () => {
       const hidden = editBusinessForm.hidden;
       editBusinessForm.hidden = !hidden;
+      businessForm.hidden = hidden;
       if (!hidden) {
         editBusinessForm.elements.logoUrl.value = "";
         editLogoPreview.hidden = true;
@@ -835,7 +884,7 @@
           method: "POST",
           body: formData
         });
-        const body = await response.json();
+        const body = await readApiResponse(response);
 
         if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear el negocio.");
 
@@ -875,7 +924,7 @@
           "/businesses/" + encodeURIComponent(selectedBusinessId()),
           { method: "PATCH", body: formData }
         );
-        const body = await response.json();
+        const body = await readApiResponse(response);
         if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo actualizar el negocio.");
 
         await loadBusinesses();
@@ -911,7 +960,7 @@
             body: JSON.stringify(data)
           }
         );
-        const body = await response.json();
+        const body = await readApiResponse(response);
 
         if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo crear la tarjeta.");
 
@@ -963,7 +1012,7 @@
           }
         );
 
-        const body = await response.json();
+        const body = await readApiResponse(response);
         if (!response.ok) {
           throw new Error(body.error ? JSON.stringify(body.error) : "No se pudo actualizar el cliente.");
         }
@@ -1004,7 +1053,7 @@
             body: JSON.stringify({ points: data.points })
           }
         );
-        const body = await response.json();
+        const body = await readApiResponse(response);
 
         if (!response.ok) throw new Error(body.error ? JSON.stringify(body.error) : "No se pudieron actualizar los puntos.");
 
